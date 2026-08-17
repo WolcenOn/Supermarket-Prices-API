@@ -50,7 +50,7 @@ func TestSearchReturnsMatchingProduct(t *testing.T) {
     if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
         t.Fatal(err)
     }
-    if body.Count != 2 {
-        t.Fatalf("expected 2 demo products, got %d", body.Count)
+    if body.Count != 3 {
+        t.Fatalf("expected 3 MVP demo products, got %d", body.Count)
     }
 }
