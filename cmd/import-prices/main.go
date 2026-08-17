@@ -2,6 +2,7 @@ package main
 
 import (
     "context"
+    "database/sql"
     "encoding/json"
     "flag"
     "fmt"
@@ -10,8 +11,11 @@ import (
     "strings"
     "time"
 
+    _ "github.com/jackc/pgx/v5/stdlib"
+
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
     "github.com/WolcenOn/Supermarket-Prices-API/internal/importer"
+    postgresstore "github.com/WolcenOn/Supermarket-Prices-API/internal/storage/postgres"
     "github.com/WolcenOn/Supermarket-Prices-API/internal/supermarkets/dia"
 )
 
@@ -51,12 +55,17 @@ func main() {
     ctx, cancel := context.WithTimeout(context.Background(), *timeout)
     defer cancel()
 
-    if !*dryRun {
-        log.Fatal("persistence is not wired yet; run with --dry-run or implement the PostgreSQL Sink")
+    if *dryRun {
+        runDry(ctx, provider, strings.TrimSpace(*postalCode))
+        return
     }
 
+    runPersistent(ctx, provider, strings.TrimSpace(*postalCode))
+}
+
+func runDry(ctx context.Context, provider importer.Provider, postalCode string) {
     sink := &collectingSink{}
-    result, err := importer.Run(ctx, provider, sink, "catalog", strings.TrimSpace(*postalCode))
+    result, err := importer.Run(ctx, provider, sink, "catalog", postalCode)
     if err != nil {
         log.Fatal(err)
     }
@@ -76,6 +85,43 @@ func main() {
     if err := encoder.Encode(output); err != nil {
         fmt.Fprintln(os.Stderr, err)
         os.Exit(1)
+    }
+}
+
+func runPersistent(ctx context.Context, provider importer.Provider, postalCode string) {
+    databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+    if databaseURL == "" {
+        log.Fatal("DATABASE_URL is required when --dry-run=false")
+    }
+
+    db, err := sql.Open("pgx", databaseURL)
+    if err != nil {
+        log.Fatalf("open postgres: %v", err)
+    }
+    defer db.Close()
+
+    if err := db.PingContext(ctx); err != nil {
+        log.Fatalf("ping postgres: %v", err)
+    }
+
+    sink := postgresstore.NewSink(db)
+    result, err := importer.Run(ctx, provider, sink, "catalog", postalCode)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    output := struct {
+        Mode   string          `json:"mode"`
+        Result importer.Result `json:"result"`
+    }{
+        Mode:   "persist",
+        Result: result,
+    }
+
+    encoder := json.NewEncoder(os.Stdout)
+    encoder.SetIndent("", "  ")
+    if err := encoder.Encode(output); err != nil {
+        log.Fatal(err)
     }
 }
 
