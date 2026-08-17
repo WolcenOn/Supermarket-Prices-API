@@ -50,12 +50,24 @@ Los extractores se implementan mediante providers independientes. La API públic
 - Importer desacoplado mediante `Provider -> Sink`.
 - Modo dry-run.
 - `PostgresSink` para guardar producto, observaciones históricas y promociones.
+- `CatalogStore` PostgreSQL para servir el último precio relevante por código postal.
+- La API usa PostgreSQL cuando `DATABASE_URL` está configurada y solo usa datos demo en desarrollo sin base configurada.
 
 ## Ejecutar API
+
+Sin `DATABASE_URL`, la API arranca con catálogo demo local:
 
 ```bash
 go run ./cmd/api
 ```
+
+Con PostgreSQL, las búsquedas se resuelven contra los productos importados:
+
+```bash
+DATABASE_URL='postgres://...' go run ./cmd/api
+```
+
+Si `DATABASE_URL` está presente pero la conexión falla, el proceso no arranca. Si una lectura del catálogo falla durante una petición, la API devuelve `500 catalog_unavailable`; no sustituye silenciosamente la base real por datos demo.
 
 Endpoints iniciales:
 
@@ -65,6 +77,8 @@ GET /api/v1/version
 GET /api/v1/supermarkets
 GET /api/v1/products/search?q=arroz&postalCode=28001
 ```
+
+La búsqueda devuelve como máximo 100 productos y, para cada producto, selecciona la observación más reciente compatible con el código postal solicitado, dando prioridad a una observación específica de ese código postal frente a una observación global.
 
 ## Importer DIA
 
