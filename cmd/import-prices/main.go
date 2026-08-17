@@ -11,7 +11,7 @@ import (
     "strings"
     "time"
 
-    _ "github.com/jackc/pgx/v5/stdlib"
+    _ "github.com/lib/pq"
 
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
     "github.com/WolcenOn/Supermarket-Prices-API/internal/importer"
@@ -94,7 +94,7 @@ func runPersistent(ctx context.Context, provider importer.Provider, postalCode s
         log.Fatal("DATABASE_URL is required when --dry-run=false")
     }
 
-    db, err := sql.Open("pgx", databaseURL)
+    db, err := sql.Open("postgres", databaseURL)
     if err != nil {
         log.Fatalf("open postgres: %v", err)
     }
