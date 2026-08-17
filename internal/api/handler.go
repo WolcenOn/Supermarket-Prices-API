@@ -35,8 +35,13 @@ func (h *Handler) version(w http.ResponseWriter, _ *http.Request) {
     writeJSON(w, http.StatusOK, map[string]any{"version": Version})
 }
 
-func (h *Handler) supermarkets(w http.ResponseWriter, _ *http.Request) {
-    writeJSON(w, http.StatusOK, map[string]any{"items": h.store.Supermarkets()})
+func (h *Handler) supermarkets(w http.ResponseWriter, r *http.Request) {
+    items, err := h.store.Supermarkets(r.Context())
+    if err != nil {
+        writeStoreError(w)
+        return
+    }
+    writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (h *Handler) searchProducts(w http.ResponseWriter, r *http.Request) {
@@ -50,13 +55,24 @@ func (h *Handler) searchProducts(w http.ResponseWriter, r *http.Request) {
     }
 
     postalCode := strings.TrimSpace(r.URL.Query().Get("postalCode"))
-    products := h.store.Search(catalog.SearchParams{Query: query, PostalCode: postalCode})
+    products, err := h.store.Search(r.Context(), catalog.SearchParams{Query: query, PostalCode: postalCode})
+    if err != nil {
+        writeStoreError(w)
+        return
+    }
 
     writeJSON(w, http.StatusOK, map[string]any{
         "query": query,
         "postalCode": postalCode,
         "count": len(products),
         "items": products,
+    })
+}
+
+func writeStoreError(w http.ResponseWriter) {
+    writeJSON(w, http.StatusInternalServerError, map[string]any{
+        "error": "catalog_unavailable",
+        "message": "catalog data is temporarily unavailable",
     })
 }
 
