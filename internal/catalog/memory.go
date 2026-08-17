@@ -1,6 +1,7 @@
 package catalog
 
 import (
+    "context"
     "strings"
     "time"
 )
@@ -13,15 +14,15 @@ func NewMemoryStore(products []Product) *MemoryStore {
     return &MemoryStore{products: products}
 }
 
-func (m *MemoryStore) Supermarkets() []Supermarket {
+func (m *MemoryStore) Supermarkets(_ context.Context) ([]Supermarket, error) {
     return []Supermarket{
         {ID: "dia", Name: "DIA"},
         {ID: "mercadona", Name: "Mercadona"},
         {ID: "lidl", Name: "Lidl"},
-    }
+    }, nil
 }
 
-func (m *MemoryStore) Search(params SearchParams) []Product {
+func (m *MemoryStore) Search(_ context.Context, params SearchParams) ([]Product, error) {
     query := strings.ToLower(strings.TrimSpace(params.Query))
     postalCode := strings.TrimSpace(params.PostalCode)
 
@@ -35,7 +36,7 @@ func (m *MemoryStore) Search(params SearchParams) []Product {
         }
         out = append(out, product)
     }
-    return out
+    return out, nil
 }
 
 func SeedProducts() []Product {
