@@ -15,10 +15,9 @@ func NewMemoryStore(products []Product) *MemoryStore {
 
 func (m *MemoryStore) Supermarkets() []Supermarket {
     return []Supermarket{
-        {ID: "carrefour", Name: "Carrefour"},
-        {ID: "alcampo", Name: "Alcampo"},
         {ID: "dia", Name: "DIA"},
         {ID: "mercadona", Name: "Mercadona"},
+        {ID: "lidl", Name: "Lidl"},
     }
 }
 
@@ -43,14 +42,22 @@ func SeedProducts() []Product {
     now := time.Now().UTC()
     return []Product{
         {
-            ID: "demo-carrefour-arroz-1kg", SupermarketID: "carrefour", ExternalID: "demo-001",
-            Name: "Arroz redondo", Brand: "Demo Carrefour", PackageAmount: 1, PackageUnit: "kg",
-            Price: 1.29, PricePerUnit: 1.29, PriceUnit: "kg", PostalCode: "28001", ObservedAt: now,
+            ID: "demo-dia-arroz-1kg", SupermarketID: "dia", ExternalID: "demo-dia-001",
+            Name: "Arroz redondo", Brand: "Dia", PackageAmount: 1, PackageUnit: "kg",
+            Price: 1.29, PricePerUnit: 1.29, PriceUnit: "kg", PostalCode: "28001",
+            Available: true, ObservedAt: now,
         },
         {
-            ID: "demo-alcampo-arroz-1kg", SupermarketID: "alcampo", ExternalID: "demo-002",
-            Name: "Arroz redondo", Brand: "Demo Alcampo", PackageAmount: 1, PackageUnit: "kg",
-            Price: 1.24, PricePerUnit: 1.24, PriceUnit: "kg", PostalCode: "28001", ObservedAt: now,
+            ID: "demo-mercadona-arroz-1kg", SupermarketID: "mercadona", ExternalID: "demo-mercadona-001",
+            Name: "Arroz redondo", Brand: "Hacendado", PackageAmount: 1, PackageUnit: "kg",
+            Price: 1.35, PricePerUnit: 1.35, PriceUnit: "kg", PostalCode: "28001",
+            Available: true, ObservedAt: now,
+        },
+        {
+            ID: "demo-lidl-arroz-1kg", SupermarketID: "lidl", ExternalID: "demo-lidl-001",
+            Name: "Arroz redondo", Brand: "Demo Lidl", PackageAmount: 1, PackageUnit: "kg",
+            Price: 1.25, PricePerUnit: 1.25, PriceUnit: "kg", PostalCode: "28001",
+            Available: true, ObservedAt: now,
         },
     }
 }
