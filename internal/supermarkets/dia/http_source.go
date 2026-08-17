@@ -35,7 +35,7 @@ func NewHTTPSource(categoryURLs []string) *HTTPSource {
     }
 }
 
-func (s *HTTPSource) Fetch(ctx context.Context, query, postalCode string) ([]RawProduct, error) {
+func (s *HTTPSource) Search(ctx context.Context, query, postalCode string) ([]RawProduct, error) {
     if s.Client == nil {
         s.Client = &http.Client{Timeout: 20 * time.Second}
     }
