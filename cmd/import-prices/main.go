@@ -10,12 +10,22 @@ import (
     "strings"
     "time"
 
+    "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
     "github.com/WolcenOn/Supermarket-Prices-API/internal/importer"
     "github.com/WolcenOn/Supermarket-Prices-API/internal/supermarkets/dia"
 )
 
 var defaultDIACategories = []string{
     "https://www.dia.es/arroz-pastas-y-legumbres/arroz/c/L2042?page=1",
+}
+
+type collectingSink struct {
+    products []catalog.Product
+}
+
+func (s *collectingSink) SaveProducts(_ context.Context, products []catalog.Product) error {
+    s.products = append(s.products, products...)
+    return nil
 }
 
 func main() {
@@ -41,28 +51,24 @@ func main() {
     ctx, cancel := context.WithTimeout(context.Background(), *timeout)
     defer cancel()
 
-    result, err := importer.Run(ctx, provider, nil, "catalog", strings.TrimSpace(*postalCode))
-    if err != nil {
-        log.Fatal(err)
-    }
-
     if !*dryRun {
         log.Fatal("persistence is not wired yet; run with --dry-run or implement the PostgreSQL Sink")
     }
 
-    products, err := provider.Search(ctx, "catalog", strings.TrimSpace(*postalCode))
+    sink := &collectingSink{}
+    result, err := importer.Run(ctx, provider, sink, "catalog", strings.TrimSpace(*postalCode))
     if err != nil {
         log.Fatal(err)
     }
 
     output := struct {
-        Mode   string      `json:"mode"`
-        Result interface{} `json:"result"`
-        Items  interface{} `json:"items"`
+        Mode   string            `json:"mode"`
+        Result importer.Result   `json:"result"`
+        Items  []catalog.Product `json:"items"`
     }{
         Mode:   "dry-run",
         Result: result,
-        Items:  products,
+        Items:  sink.products,
     }
 
     encoder := json.NewEncoder(os.Stdout)
