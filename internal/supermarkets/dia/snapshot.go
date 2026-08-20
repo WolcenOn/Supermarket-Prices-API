@@ -8,10 +8,10 @@ import (
 )
 
 var (
-    skuMarkerRE  = regexp.MustCompile(`sku_id::([0-9]+)`)
-    moneyRE      = regexp.MustCompile(`^([0-9]+,[0-9]{2})\s*€$`)
-    discountRE   = regexp.MustCompile(`^([0-9]+)%\s*dto\.$`)
-    unitPriceRE  = regexp.MustCompile(`^\(([0-9]+,[0-9]{2})\s*€/([^\)]+)\)$`)
+    skuMarkerRE = regexp.MustCompile(`sku_id::([0-9]+)`)
+    moneyRE = regexp.MustCompile(`^([0-9]+,[0-9]{2})\s*€$`)
+    discountRE = regexp.MustCompile(`^([0-9]+)%\s*dto\.$`)
+    unitPriceRE = regexp.MustCompile(`^\(([0-9]+,[0-9]{2})\s*€/([^\)]+)\)$`)
 )
 
 // ParseRenderedSnapshot parses a plain-text snapshot of a DIA category/listing
@@ -33,11 +33,10 @@ func ParseRenderedSnapshot(snapshot, postalCode string, observedAt time.Time) []
         raw := RawProduct{
             ExternalID: match[1],
             PostalCode: strings.TrimSpace(postalCode),
-            Available:  true,
+            Available: true,
             ObservedAt: observedAt,
         }
 
-        // A product block ends at the next sku marker.
         end := len(lines)
         for j := i + 1; j < len(lines); j++ {
             if skuMarkerRE.MatchString(lines[j]) {
@@ -58,7 +57,7 @@ func ParseRenderedSnapshot(snapshot, postalCode string, observedAt time.Time) []
 
 func parseProductBlock(lines []string, raw *RawProduct) {
     for _, line := range lines {
-        normalized := strings.TrimSpace(line)
+        normalized := normalizeVisibleWhitespace(line)
         lower := strings.ToLower(normalized)
 
         if strings.Contains(lower, "[button: agotado]") || lower == "agotado" {
@@ -94,14 +93,13 @@ func parseProductBlock(lines []string, raw *RawProduct) {
         }
     }
 
-    // Promotion descriptions such as 2nd-unit discounts may not include a
-    // promotional unit price. Preserve the descriptive label when possible.
     if raw.PromotionLabel == "" {
         for _, line := range lines {
-            upper := strings.ToUpper(strings.TrimSpace(line))
-            if strings.Contains(upper, "DTO") && !discountRE.MatchString(strings.ToLower(line)) {
+            normalized := normalizeVisibleWhitespace(line)
+            upper := strings.ToUpper(normalized)
+            if strings.Contains(upper, "DTO") && !discountRE.MatchString(strings.ToLower(normalized)) {
                 raw.PromotionType = "multibuy"
-                raw.PromotionLabel = strings.TrimSpace(line)
+                raw.PromotionLabel = normalized
                 break
             }
         }
@@ -112,12 +110,21 @@ func splitNonEmptyLines(value string) []string {
     rawLines := strings.Split(strings.ReplaceAll(value, "\r\n", "\n"), "\n")
     lines := make([]string, 0, len(rawLines))
     for _, line := range rawLines {
-        line = strings.TrimSpace(line)
+        line = normalizeVisibleWhitespace(line)
         if line != "" {
             lines = append(lines, line)
         }
     }
     return lines
+}
+
+func normalizeVisibleWhitespace(value string) string {
+    replacer := strings.NewReplacer(
+        "\u00a0", " ", // non-breaking space used by DIA around currency/unit labels
+        "\u202f", " ", // narrow non-breaking space
+        "\ufeff", "",  // byte-order mark if present in copied/embedded text
+    )
+    return strings.TrimSpace(replacer.Replace(value))
 }
 
 func isLikelyProductName(line string) bool {
