@@ -20,7 +20,11 @@ import (
 )
 
 var defaultDIACategories = []string{
-    "https://www.dia.es/arroz-pastas-y-legumbres/arroz/c/L2042?page=1",
+    // Keep the default validation set deliberately small. This public category
+    // currently exposes rice SKUs, names, prices and unit prices without using
+    // DIA's search routes. Category identifiers can change, so callers may
+    // override this list with --categories without changing the provider.
+    "https://www.dia.es/arroz-pastas-y-legumbres/c/L106",
 }
 
 type collectingSink struct {
