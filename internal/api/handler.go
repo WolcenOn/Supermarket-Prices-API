@@ -8,14 +8,19 @@ import (
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
 )
 
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 type Handler struct {
-    store catalog.Store
+    store           catalog.Store
+    ingredientStore catalog.IngredientStore
 }
 
 func NewHandler(store catalog.Store) *Handler {
-    return &Handler{store: store}
+    handler := &Handler{store: store}
+    if ingredientStore, ok := store.(catalog.IngredientStore); ok {
+        handler.ingredientStore = ingredientStore
+    }
+    return handler
 }
 
 func (h *Handler) Routes() http.Handler {
@@ -24,6 +29,9 @@ func (h *Handler) Routes() http.Handler {
     mux.HandleFunc("GET /api/v1/version", h.version)
     mux.HandleFunc("GET /api/v1/supermarkets", h.supermarkets)
     mux.HandleFunc("GET /api/v1/products/search", h.searchProducts)
+    mux.HandleFunc("GET /api/v1/ingredients", h.ingredients)
+    mux.HandleFunc("GET /api/v1/ingredients/search", h.searchIngredients)
+    mux.HandleFunc("GET /api/v1/ingredients/{id}/products", h.ingredientProducts)
     return mux
 }
 
@@ -67,6 +75,82 @@ func (h *Handler) searchProducts(w http.ResponseWriter, r *http.Request) {
         "count": len(products),
         "items": products,
     })
+}
+
+func (h *Handler) ingredients(w http.ResponseWriter, r *http.Request) {
+    if !h.requireIngredientStore(w) {
+        return
+    }
+    items, err := h.ingredientStore.Ingredients(r.Context())
+    if err != nil {
+        writeStoreError(w)
+        return
+    }
+    writeJSON(w, http.StatusOK, map[string]any{
+        "count": len(items),
+        "items": items,
+    })
+}
+
+func (h *Handler) searchIngredients(w http.ResponseWriter, r *http.Request) {
+    if !h.requireIngredientStore(w) {
+        return
+    }
+    query := strings.TrimSpace(r.URL.Query().Get("q"))
+    if query == "" {
+        writeJSON(w, http.StatusBadRequest, map[string]any{
+            "error": "missing_query",
+            "message": "query parameter q is required",
+        })
+        return
+    }
+    items, err := h.ingredientStore.SearchIngredients(r.Context(), query)
+    if err != nil {
+        writeStoreError(w)
+        return
+    }
+    writeJSON(w, http.StatusOK, map[string]any{
+        "query": query,
+        "count": len(items),
+        "items": items,
+    })
+}
+
+func (h *Handler) ingredientProducts(w http.ResponseWriter, r *http.Request) {
+    if !h.requireIngredientStore(w) {
+        return
+    }
+    ingredientID := strings.TrimSpace(r.PathValue("id"))
+    if ingredientID == "" {
+        writeJSON(w, http.StatusBadRequest, map[string]any{
+            "error": "missing_ingredient_id",
+            "message": "ingredient id is required",
+        })
+        return
+    }
+    postalCode := strings.TrimSpace(r.URL.Query().Get("postalCode"))
+    items, err := h.ingredientStore.IngredientProducts(r.Context(), ingredientID, postalCode)
+    if err != nil {
+        writeStoreError(w)
+        return
+    }
+    writeJSON(w, http.StatusOK, map[string]any{
+        "ingredientId": ingredientID,
+        "postalCode": postalCode,
+        "count": len(items),
+        "items": items,
+    })
+}
+
+func (h *Handler) requireIngredientStore(w http.ResponseWriter) bool {
+    if h.ingredientStore != nil {
+        return true
+    }
+    writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+        "error": "ingredient_catalog_unavailable",
+        "message": "canonical ingredient catalog is not configured",
+    })
+    return false
 }
 
 func writeStoreError(w http.ResponseWriter) {
