@@ -8,7 +8,7 @@ import (
 )
 
 var (
-    skuMarkerRE = regexp.MustCompile(`sku_id::([0-9]+)`)
+    skuMarkerRE = regexp.MustCompile(`sku_id\s*::\s*([0-9]+)`)
     moneyRE = regexp.MustCompile(`^([0-9]+,[0-9]{2})\s*€$`)
     discountRE = regexp.MustCompile(`^([0-9]+)%\s*dto\.$`)
     unitPriceRE = regexp.MustCompile(`^\(([0-9]+,[0-9]{2})\s*€/([^\)]+)\)$`)
@@ -17,9 +17,6 @@ var (
 // ParseRenderedSnapshot parses a plain-text snapshot of a DIA category/listing
 // page. The snapshot format mirrors the semantic text exposed by the rendered
 // public catalog and is used to lock down extraction rules without network I/O.
-//
-// Production acquisition will first obtain a permitted category page and turn
-// it into an equivalent semantic snapshot (or populate RawProduct directly).
 func ParseRenderedSnapshot(snapshot, postalCode string, observedAt time.Time) []RawProduct {
     lines := splitNonEmptyLines(snapshot)
     products := make([]RawProduct, 0)
@@ -120,9 +117,9 @@ func splitNonEmptyLines(value string) []string {
 
 func normalizeVisibleWhitespace(value string) string {
     replacer := strings.NewReplacer(
-        "\u00a0", " ", // non-breaking space used by DIA around currency/unit labels
-        "\u202f", " ", // narrow non-breaking space
-        "\ufeff", "",  // byte-order mark if present in copied/embedded text
+        "\u00a0", " ",
+        "\u202f", " ",
+        "\ufeff", "",
     )
     return strings.TrimSpace(replacer.Replace(value))
 }
