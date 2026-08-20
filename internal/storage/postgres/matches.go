@@ -41,15 +41,15 @@ func SaveIngredientMatches(ctx context.Context, db *sql.DB, matches []matching.M
             ON CONFLICT (canonical_ingredient_id, supermarket_product_id)
             DO UPDATE SET
                 match_status = CASE
-                    WHEN ingredient_product_matches.match_status = 'confirmed' THEN ingredient_product_matches.match_status
+                    WHEN ingredient_product_matches.match_status IN ('confirmed', 'rejected') THEN ingredient_product_matches.match_status
                     ELSE EXCLUDED.match_status
                 END,
                 match_score = CASE
-                    WHEN ingredient_product_matches.match_status = 'confirmed' THEN ingredient_product_matches.match_score
+                    WHEN ingredient_product_matches.match_status IN ('confirmed', 'rejected') THEN ingredient_product_matches.match_score
                     ELSE EXCLUDED.match_score
                 END,
                 match_source = CASE
-                    WHEN ingredient_product_matches.match_status = 'confirmed' THEN ingredient_product_matches.match_source
+                    WHEN ingredient_product_matches.match_status IN ('confirmed', 'rejected') THEN ingredient_product_matches.match_source
                     ELSE EXCLUDED.match_source
                 END,
                 updated_at = NOW()
