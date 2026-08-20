@@ -8,16 +8,8 @@ import (
 
 func TestParseCategoryHTMLCurrentServerRenderedShape(t *testing.T) {
     document := `<!doctype html><html><body>
-<div>condition :: true index::0 initialLoadedItems::10 item.isVisible:: item.type:: item.sku_id::5873 item.data::</div>
-<a>Arroz largo Dia Arrozona 1 Kg</a>
-<div>1,20 €</div>
-<div>(1,20 €/KILO)</div>
-<button>Añadir</button>
-<div>condition :: true index::1 initialLoadedItems::10 item.isVisible:: item.type:: item.sku_id::151 item.data::</div>
-<a>Arroz extra Dia Arrozona 1 Kg</a>
-<div>1,20 €</div>
-<div>(1,20 €/KILO)</div>
-<button>Añadir</button>
+<div>condition :: true index::0 initialLoadedItems::10 item.isVisible:: item.type:: item.sku_id::5873 item.data::<a>Arroz largo Dia Arrozona 1 Kg</a><span>1,20&nbsp;€</span><span>(1,20&nbsp;€/KILO)</span><button>Añadir</button></div>
+<div>condition :: true index::1 initialLoadedItems::10 item.isVisible:: item.type:: item.sku_id :: 151 item.data::<a>Arroz extra Dia Arrozona 1 Kg</a><span>1,20&nbsp;€</span><span>(1,20&nbsp;€/KILO)</span><button>Añadir</button></div>
 </body></html>`
 
     products, err := parseCategoryHTML(document, "28001", time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC))
@@ -29,6 +21,9 @@ func TestParseCategoryHTMLCurrentServerRenderedShape(t *testing.T) {
     }
     if products[0].ExternalID != "5873" || products[0].Name != "Arroz largo Dia Arrozona 1 Kg" || products[0].RegularPrice != 1.20 {
         t.Fatalf("unexpected first product: %+v", products[0])
+    }
+    if products[1].ExternalID != "151" || products[1].RegularPrice != 1.20 {
+        t.Fatalf("unexpected second product: %+v", products[1])
     }
 }
 
