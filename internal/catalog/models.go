@@ -1,6 +1,9 @@
 package catalog
 
-import "time"
+import (
+    "context"
+    "time"
+)
 
 type Supermarket struct {
     ID   string `json:"id"`
@@ -38,6 +41,6 @@ type SearchParams struct {
 }
 
 type Store interface {
-    Supermarkets() []Supermarket
-    Search(SearchParams) []Product
+    Supermarkets(ctx context.Context) ([]Supermarket, error)
+    Search(ctx context.Context, params SearchParams) ([]Product, error)
 }

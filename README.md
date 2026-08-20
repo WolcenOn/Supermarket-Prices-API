@@ -1,62 +1,106 @@
-# Supermarket Prices API
+# Supermarket-Prices-API
 
-Servicio independiente para recopilar, normalizar, almacenar y comparar precios de supermercados en España.
+API independiente para recopilar, normalizar, almacenar y comparar precios de supermercados en España.
 
-El objetivo es ofrecer una API estable que pueda consumir `Gestor-Alimentacion` y otros clientes sin acoplarlos a la forma en que cada supermercado publica sus datos.
+## Objetivo del MVP
 
-## Estado
+Supermercados prioritarios:
 
-**Fase 0 — Bootstrap y contratos.**
+1. DIA
+2. Mercadona
+3. Lidl
 
-Incluye actualmente:
-
-- API HTTP en Go.
-- `GET /health`.
-- `GET /api/v1/version`.
-- `GET /api/v1/supermarkets`.
-- `GET /api/v1/products/search?q=...&postalCode=...` con datos de demostración.
-- Modelo de producto y observación de precio.
-- Interfaz común de `Provider` para supermercados.
-- Migración PostgreSQL inicial.
-- Dockerfile y configuración Railway.
-- CI con tests y `go vet`.
-
-Los datos de demostración no pretenden representar precios reales; solo fijan el contrato de la API antes de integrar una fuente externa.
+El servicio mantiene separado el dominio de precios del `Gestor-Alimentacion`. El gestor consumirá esta API, pero no conocerá cómo se obtiene el precio de cada cadena.
 
 ## Arquitectura
 
 ```text
 Supermercados
      ↓
-Providers / worker
+prices-worker
      ↓
-Normalización
+normalización
      ↓
 PostgreSQL
      ↓
-Supermarket Prices API
+prices-api
      ↓
 Gestor-Alimentacion / otros consumidores
 ```
 
-La API pública no realizará scraping durante una petición. La adquisición de datos se ejecutará en un proceso separado y la API consultará datos persistidos.
+Los extractores se implementan mediante providers independientes. La API pública consulta nuestro catálogo persistido y no realiza scraping durante una petición de usuario.
 
-Consulta [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) para el diseño y [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) para trabajar en el proyecto.
+## Estado
 
-## Ejecutar localmente
+### Fase 0 — completada
+
+- Go + API HTTP.
+- Modelo de catálogo normalizado.
+- Interfaz de supermercado `Provider`.
+- PostgreSQL y migraciones iniciales.
+- Docker/Railway.
+- CI con tests y `go vet`.
+- Documentación de arquitectura.
+
+### Fase 1 — DIA en desarrollo
+
+- Normalización de productos/precios/promociones.
+- Parser reproducible de listados.
+- `HTTPSource` para páginas públicas de categoría.
+- Importer desacoplado mediante `Provider -> Sink`.
+- Modo dry-run.
+- `PostgresSink` para guardar producto, observaciones históricas y promociones.
+- `CatalogStore` PostgreSQL para servir el último precio relevante por código postal.
+- La API usa PostgreSQL cuando `DATABASE_URL` está configurada y solo usa datos demo en desarrollo sin base configurada.
+
+## Ejecutar API
+
+Sin `DATABASE_URL`, la API arranca con catálogo demo local:
 
 ```bash
 go run ./cmd/api
 ```
 
-Después:
+Con PostgreSQL, las búsquedas se resuelven contra los productos importados:
 
 ```bash
-curl http://localhost:8080/health
-curl http://localhost:8080/api/v1/version
-curl http://localhost:8080/api/v1/supermarkets
-curl 'http://localhost:8080/api/v1/products/search?q=arroz&postalCode=28001'
+DATABASE_URL='postgres://...' go run ./cmd/api
 ```
+
+Si `DATABASE_URL` está presente pero la conexión falla, el proceso no arranca. Si una lectura del catálogo falla durante una petición, la API devuelve `500 catalog_unavailable`; no sustituye silenciosamente la base real por datos demo.
+
+Endpoints iniciales:
+
+```text
+GET /health
+GET /api/v1/version
+GET /api/v1/supermarkets
+GET /api/v1/products/search?q=arroz&postalCode=28001
+```
+
+La búsqueda devuelve como máximo 100 productos y, para cada producto, selecciona la observación más reciente compatible con el código postal solicitado, dando prioridad a una observación específica de ese código postal frente a una observación global.
+
+## Importer DIA
+
+Inspeccionar una importación sin escribir en la base:
+
+```bash
+go run ./cmd/import-prices \
+  --supermarket=dia \
+  --postal-code=28001 \
+  --dry-run=true
+```
+
+Persistir en PostgreSQL (requiere migraciones aplicadas y `DATABASE_URL`):
+
+```bash
+go run ./cmd/import-prices \
+  --supermarket=dia \
+  --postal-code=28001 \
+  --dry-run=false
+```
+
+Más detalles en `docs/DIA_IMPORTER.md`.
 
 ## Tests
 
@@ -67,15 +111,12 @@ go vet ./...
 
 ## Roadmap
 
-1. **Fase 0:** contratos, arquitectura y base ejecutable.
-2. **Fase 1:** primer proveedor real y persistencia de precios.
-3. **Fase 2:** catálogo canónico y matching entre supermercados.
-4. **Fase 3:** comparador y optimizador de cesta.
-5. **Fase 4:** marcas, calidad y preferencias de supermercado.
-6. **Fase 5:** integración con Gestor-Alimentacion.
+- Fase 1A: DIA.
+- Fase 1B: Mercadona.
+- Fase 1C: Lidl.
+- Fase 2: catálogo canónico y matching entre cadenas.
+- Fase 3: comparación de cesta en uno o varios supermercados.
+- Fase 4: preferencias de tienda, marca, calidad y fidelización.
+- Fase 5: integración con `Gestor-Alimentacion`.
 
-El roadmap detallado se mantiene en los issues del repositorio para que cada fase tenga alcance y criterio de aceptación claros.
-
-## Licencia
-
-GPL-3.0.
+La planificación detallada se mantiene en los issues del repositorio.

@@ -1,13 +1,19 @@
 FROM golang:1.24-alpine AS build
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/prices-api ./cmd/api
+COPY migrations ./migrations
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/prices-api ./cmd/api \
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/prices-migrate ./cmd/migrate \
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/import-prices ./cmd/import-prices
 
 FROM alpine:3.21
 RUN adduser -D -H appuser
 USER appuser
 COPY --from=build /out/prices-api /usr/local/bin/prices-api
+COPY --from=build /out/prices-migrate /usr/local/bin/prices-migrate
+COPY --from=build /out/import-prices /usr/local/bin/import-prices
 EXPOSE 8080
 CMD ["prices-api"]
