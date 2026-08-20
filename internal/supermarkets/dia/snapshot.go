@@ -9,6 +9,7 @@ import (
 
 var (
     skuMarkerRE = regexp.MustCompile(`sku_id\s*::\s*([0-9]+)`)
+    dataMarkerRE = regexp.MustCompile(`(?i)^item\.data\s*::\s*`)
     moneyRE = regexp.MustCompile(`^([0-9]+,[0-9]{2})\s*€$`)
     discountRE = regexp.MustCompile(`^([0-9]+)%\s*dto\.$`)
     unitPriceRE = regexp.MustCompile(`^\(([0-9]+,[0-9]{2})\s*€/([^\)]+)\)$`)
@@ -55,6 +56,10 @@ func ParseRenderedSnapshot(snapshot, postalCode string, observedAt time.Time) []
 func parseProductBlock(lines []string, raw *RawProduct) {
     for _, line := range lines {
         normalized := normalizeVisibleWhitespace(line)
+        normalized = strings.TrimSpace(dataMarkerRE.ReplaceAllString(normalized, ""))
+        if normalized == "" {
+            continue
+        }
         lower := strings.ToLower(normalized)
 
         if strings.Contains(lower, "[button: agotado]") || lower == "agotado" {
@@ -93,6 +98,7 @@ func parseProductBlock(lines []string, raw *RawProduct) {
     if raw.PromotionLabel == "" {
         for _, line := range lines {
             normalized := normalizeVisibleWhitespace(line)
+            normalized = strings.TrimSpace(dataMarkerRE.ReplaceAllString(normalized, ""))
             upper := strings.ToUpper(normalized)
             if strings.Contains(upper, "DTO") && !discountRE.MatchString(strings.ToLower(normalized)) {
                 raw.PromotionType = "multibuy"
