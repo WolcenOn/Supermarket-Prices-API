@@ -8,18 +8,16 @@ import (
 )
 
 var (
-    skuMarkerRE  = regexp.MustCompile(`sku_id::([0-9]+)`)
-    moneyRE      = regexp.MustCompile(`^([0-9]+,[0-9]{2})\s*€$`)
-    discountRE   = regexp.MustCompile(`^([0-9]+)%\s*dto\.$`)
-    unitPriceRE  = regexp.MustCompile(`^\(([0-9]+,[0-9]{2})\s*€/([^\)]+)\)$`)
+    skuMarkerRE = regexp.MustCompile(`sku_id\s*::\s*([0-9]+)`)
+    dataMarkerRE = regexp.MustCompile(`(?i)^item\.data\s*::\s*`)
+    moneyRE = regexp.MustCompile(`^([0-9]+,[0-9]{2})\s*€$`)
+    discountRE = regexp.MustCompile(`^([0-9]+)%\s*dto\.$`)
+    unitPriceRE = regexp.MustCompile(`^\(([0-9]+,[0-9]{2})\s*€/([^\)]+)\)$`)
 )
 
 // ParseRenderedSnapshot parses a plain-text snapshot of a DIA category/listing
 // page. The snapshot format mirrors the semantic text exposed by the rendered
 // public catalog and is used to lock down extraction rules without network I/O.
-//
-// Production acquisition will first obtain a permitted category page and turn
-// it into an equivalent semantic snapshot (or populate RawProduct directly).
 func ParseRenderedSnapshot(snapshot, postalCode string, observedAt time.Time) []RawProduct {
     lines := splitNonEmptyLines(snapshot)
     products := make([]RawProduct, 0)
@@ -33,11 +31,10 @@ func ParseRenderedSnapshot(snapshot, postalCode string, observedAt time.Time) []
         raw := RawProduct{
             ExternalID: match[1],
             PostalCode: strings.TrimSpace(postalCode),
-            Available:  true,
+            Available: true,
             ObservedAt: observedAt,
         }
 
-        // A product block ends at the next sku marker.
         end := len(lines)
         for j := i + 1; j < len(lines); j++ {
             if skuMarkerRE.MatchString(lines[j]) {
@@ -58,7 +55,11 @@ func ParseRenderedSnapshot(snapshot, postalCode string, observedAt time.Time) []
 
 func parseProductBlock(lines []string, raw *RawProduct) {
     for _, line := range lines {
-        normalized := strings.TrimSpace(line)
+        normalized := normalizeVisibleWhitespace(line)
+        normalized = strings.TrimSpace(dataMarkerRE.ReplaceAllString(normalized, ""))
+        if normalized == "" {
+            continue
+        }
         lower := strings.ToLower(normalized)
 
         if strings.Contains(lower, "[button: agotado]") || lower == "agotado" {
@@ -94,14 +95,14 @@ func parseProductBlock(lines []string, raw *RawProduct) {
         }
     }
 
-    // Promotion descriptions such as 2nd-unit discounts may not include a
-    // promotional unit price. Preserve the descriptive label when possible.
     if raw.PromotionLabel == "" {
         for _, line := range lines {
-            upper := strings.ToUpper(strings.TrimSpace(line))
-            if strings.Contains(upper, "DTO") && !discountRE.MatchString(strings.ToLower(line)) {
+            normalized := normalizeVisibleWhitespace(line)
+            normalized = strings.TrimSpace(dataMarkerRE.ReplaceAllString(normalized, ""))
+            upper := strings.ToUpper(normalized)
+            if strings.Contains(upper, "DTO") && !discountRE.MatchString(strings.ToLower(normalized)) {
                 raw.PromotionType = "multibuy"
-                raw.PromotionLabel = strings.TrimSpace(line)
+                raw.PromotionLabel = normalized
                 break
             }
         }
@@ -112,12 +113,21 @@ func splitNonEmptyLines(value string) []string {
     rawLines := strings.Split(strings.ReplaceAll(value, "\r\n", "\n"), "\n")
     lines := make([]string, 0, len(rawLines))
     for _, line := range rawLines {
-        line = strings.TrimSpace(line)
+        line = normalizeVisibleWhitespace(line)
         if line != "" {
             lines = append(lines, line)
         }
     }
     return lines
+}
+
+func normalizeVisibleWhitespace(value string) string {
+    replacer := strings.NewReplacer(
+        "\u00a0", " ",
+        "\u202f", " ",
+        "\ufeff", "",
+    )
+    return strings.TrimSpace(replacer.Replace(value))
 }
 
 func isLikelyProductName(line string) bool {

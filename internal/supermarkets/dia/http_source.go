@@ -96,34 +96,52 @@ func parseCategoryHTML(document, postalCode string, observedAt time.Time) ([]Raw
         return products, nil
     }
 
-    // A successful HTTP response with zero parsed products is not treated as a
-    // valid empty category. It usually means DIA served a shell/challenge page
-    // or changed its markup, and silently accepting it would hide acquisition
-    // breakage from the worker.
-    visibleMarkers := strings.Contains(document, "sku_id::") || strings.Contains(semantic, "sku_id::")
-    return nil, fmt.Errorf("no products parsed (sku markers visible=%t, response_bytes=%d)", visibleMarkers, len(document))
+    visibleMarkers := strings.Contains(document, "sku_id") || strings.Contains(semantic, "sku_id")
+    snippet := firstSKUSnippet(semantic)
+    return nil, fmt.Errorf("no products parsed (sku markers visible=%t, response_bytes=%d, first_sku=%q)", visibleMarkers, len(document), snippet)
 }
 
-// HTMLToSemanticText converts a DIA catalog HTML response into a line-oriented
-// text representation understood by ParseRenderedSnapshot. It intentionally
-// removes executable scripts and styles; product data is expected in the
-// server-rendered category markup for the browser-compatible response.
+// HTMLToSemanticText converts DIA category HTML into a line-oriented snapshot.
+// Product names/prices live in anchors and spans, so closing those elements is
+// treated as a semantic boundary rather than flattening the entire card into a
+// single line.
 func HTMLToSemanticText(document string) string {
     document = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`).ReplaceAllString(document, "\n")
     document = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`).ReplaceAllString(document, "\n")
-    document = regexp.MustCompile(`(?i)<br\s*/?>|</p>|</div>|</li>|</article>|</section>|</button>`).ReplaceAllString(document, "\n")
+    document = regexp.MustCompile(`(?i)<br\s*/?>|</p>|</div>|</li>|</article>|</section>|</button>|</a>|</span>|</strong>`).ReplaceAllString(document, "\n")
     document = tagRE.ReplaceAllString(document, " ")
     document = html.UnescapeString(document)
+
+    // DIA sometimes emits the product marker inside a larger text node. Force
+    // it onto its own line while preserving any content that follows it.
+    markerRE := regexp.MustCompile(`sku_id\s*::\s*([0-9]+)`)
+    document = markerRE.ReplaceAllString(document, "\nsku_id::$1\n")
 
     lines := strings.Split(strings.ReplaceAll(document, "\r", "\n"), "\n")
     cleaned := make([]string, 0, len(lines))
     for _, line := range lines {
-        line = whitespace.ReplaceAllString(strings.TrimSpace(line), " ")
+        line = normalizeVisibleWhitespace(line)
+        line = whitespace.ReplaceAllString(line, " ")
         if line != "" {
             cleaned = append(cleaned, line)
         }
     }
     return strings.Join(cleaned, "\n")
+}
+
+func firstSKUSnippet(semantic string) string {
+    lower := strings.ToLower(semantic)
+    idx := strings.Index(lower, "sku_id")
+    if idx < 0 {
+        return ""
+    }
+    end := idx + 320
+    if end > len(semantic) {
+        end = len(semantic)
+    }
+    snippet := semantic[idx:end]
+    snippet = strings.ReplaceAll(snippet, "\n", " | ")
+    return snippet
 }
 
 func deduplicateRawProducts(products []RawProduct) []RawProduct {
