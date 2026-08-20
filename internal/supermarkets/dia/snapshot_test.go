@@ -83,3 +83,24 @@ Oferta Exclusiva online
         t.Fatal("expected promotion label")
     }
 }
+
+func TestParseRenderedSnapshotAcceptsLiveDIANonBreakingSpaces(t *testing.T) {
+    snapshot := "condition :: true index::0 initialLoadedItems::10 item.isVisible:: item.type:: item.sku_id::5873 item.data::\n" +
+        "Mejor valorado\n" +
+        "Arroz largo Dia Arrozona 1 Kg\n" +
+        "1,20\u00a0€\n" +
+        "(1,20\u00a0€/KILO)\n" +
+        "[Button: Añadir]\n"
+
+    products := ParseRenderedSnapshot(snapshot, "28001", time.Time{})
+    if len(products) != 1 {
+        t.Fatalf("expected 1 live-format product, got %d", len(products))
+    }
+    p := products[0]
+    if p.ExternalID != "5873" || p.Name != "Arroz largo Dia Arrozona 1 Kg" {
+        t.Fatalf("unexpected product %+v", p)
+    }
+    if p.RegularPrice != 1.20 || p.PricePerUnit != 1.20 || p.PriceUnit != "KILO" {
+        t.Fatalf("unexpected live-format prices %+v", p)
+    }
+}
