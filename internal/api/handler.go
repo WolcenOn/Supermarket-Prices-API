@@ -3,12 +3,14 @@ package api
 import (
     "encoding/json"
     "net/http"
+    "sort"
+    "strconv"
     "strings"
 
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
 )
 
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 type Handler struct {
     store           catalog.Store
@@ -32,6 +34,7 @@ func (h *Handler) Routes() http.Handler {
     mux.HandleFunc("GET /api/v1/ingredients", h.ingredients)
     mux.HandleFunc("GET /api/v1/ingredients/search", h.searchIngredients)
     mux.HandleFunc("GET /api/v1/ingredients/{id}/products", h.ingredientProducts)
+    mux.HandleFunc("GET /api/v1/ingredients/{id}/quote", h.ingredientQuote)
     return mux
 }
 
@@ -139,6 +142,75 @@ func (h *Handler) ingredientProducts(w http.ResponseWriter, r *http.Request) {
         "postalCode": postalCode,
         "count": len(items),
         "items": items,
+    })
+}
+
+func (h *Handler) ingredientQuote(w http.ResponseWriter, r *http.Request) {
+    if !h.requireIngredientStore(w) {
+        return
+    }
+
+    ingredientID := strings.TrimSpace(r.PathValue("id"))
+    if ingredientID == "" {
+        writeJSON(w, http.StatusBadRequest, map[string]any{
+            "error": "missing_ingredient_id",
+            "message": "ingredient id is required",
+        })
+        return
+    }
+
+    amountText := strings.TrimSpace(r.URL.Query().Get("amount"))
+    amount, err := strconv.ParseFloat(amountText, 64)
+    if err != nil || amount <= 0 {
+        writeJSON(w, http.StatusBadRequest, map[string]any{
+            "error": "invalid_amount",
+            "message": "query parameter amount must be a positive number",
+        })
+        return
+    }
+
+    unit := strings.TrimSpace(r.URL.Query().Get("unit"))
+    if unit == "" {
+        writeJSON(w, http.StatusBadRequest, map[string]any{
+            "error": "missing_unit",
+            "message": "query parameter unit is required",
+        })
+        return
+    }
+
+    postalCode := strings.TrimSpace(r.URL.Query().Get("postalCode"))
+    products, err := h.ingredientStore.IngredientProducts(r.Context(), ingredientID, postalCode)
+    if err != nil {
+        writeStoreError(w)
+        return
+    }
+
+    quotes := make([]catalog.PurchaseQuote, 0, len(products))
+    skipped := 0
+    for _, item := range products {
+        quote, quoteErr := catalog.QuotePurchase(item.Product, amount, unit)
+        if quoteErr != nil {
+            skipped++
+            continue
+        }
+        quotes = append(quotes, quote)
+    }
+
+    sort.SliceStable(quotes, func(i, j int) bool {
+        if quotes[i].TotalCost == quotes[j].TotalCost {
+            return quotes[i].Product.Name < quotes[j].Product.Name
+        }
+        return quotes[i].TotalCost < quotes[j].TotalCost
+    })
+
+    writeJSON(w, http.StatusOK, map[string]any{
+        "ingredientId": ingredientID,
+        "postalCode": postalCode,
+        "requiredAmount": amount,
+        "requiredUnit": unit,
+        "count": len(quotes),
+        "skipped": skipped,
+        "items": quotes,
     })
 }
 
