@@ -15,6 +15,7 @@ import (
 
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
     "github.com/WolcenOn/Supermarket-Prices-API/internal/importer"
+    "github.com/WolcenOn/Supermarket-Prices-API/internal/matching"
     postgresstore "github.com/WolcenOn/Supermarket-Prices-API/internal/storage/postgres"
     "github.com/WolcenOn/Supermarket-Prices-API/internal/supermarkets/dia"
 )
@@ -34,6 +35,23 @@ type collectingSink struct {
 func (s *collectingSink) SaveProducts(_ context.Context, products []catalog.Product) error {
     s.products = append(s.products, products...)
     return nil
+}
+
+type matchingSink struct {
+    db       *sql.DB
+    delegate importer.Sink
+}
+
+func (s *matchingSink) SaveProducts(ctx context.Context, products []catalog.Product) error {
+    if err := s.delegate.SaveProducts(ctx, products); err != nil {
+        return err
+    }
+
+    matches := make([]matching.Match, 0)
+    for _, product := range products {
+        matches = append(matches, matching.Suggest(product)...)
+    }
+    return postgresstore.SaveIngredientMatches(ctx, s.db, matches)
 }
 
 func main() {
@@ -108,7 +126,8 @@ func runPersistent(ctx context.Context, provider importer.Provider, postalCode s
         log.Fatalf("ping postgres: %v", err)
     }
 
-    sink := postgresstore.NewSink(db)
+    persistent := postgresstore.NewSink(db)
+    sink := &matchingSink{db: db, delegate: persistent}
     result, err := importer.Run(ctx, provider, sink, "catalog", postalCode)
     if err != nil {
         log.Fatal(err)
