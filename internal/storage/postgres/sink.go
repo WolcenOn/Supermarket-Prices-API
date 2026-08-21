@@ -58,7 +58,7 @@ func saveProduct(ctx context.Context, tx *sql.Tx, product catalog.Product) error
             package_unit,
             variable_weight,
             updated_at
-        ) VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, 0), NULLIF($6, ''), $7, NOW())
+        ) VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5::numeric, 0::numeric), NULLIF($6, ''), $7, NOW())
         ON CONFLICT (supermarket_id, external_id)
         DO UPDATE SET
             name = EXCLUDED.name,
@@ -95,8 +95,8 @@ func saveProduct(ctx context.Context, tx *sql.Tx, product catalog.Product) error
         ) VALUES (
             $1::uuid,
             NULLIF($2, ''),
-            $3,
-            NULLIF($4, 0),
+            $3::numeric,
+            NULLIF($4::numeric, 0::numeric),
             NULLIF($5, ''),
             'EUR',
             $6,
@@ -128,8 +128,8 @@ func saveProduct(ctx context.Context, tx *sql.Tx, product catalog.Product) error
                 $1::uuid,
                 $2,
                 NULLIF($3, ''),
-                NULLIF($4, 0),
-                NULLIF($5, 0)
+                NULLIF($4::numeric, 0::numeric),
+                NULLIF($5::numeric, 0::numeric)
             )
         `,
             observationID,
