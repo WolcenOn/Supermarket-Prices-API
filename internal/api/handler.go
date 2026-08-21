@@ -35,7 +35,20 @@ func (h *Handler) Routes() http.Handler {
     mux.HandleFunc("GET /api/v1/ingredients/search", h.searchIngredients)
     mux.HandleFunc("GET /api/v1/ingredients/{id}/products", h.ingredientProducts)
     mux.HandleFunc("GET /api/v1/ingredients/{id}/quote", h.ingredientQuote)
-    return mux
+    return withPublicReadCORS(mux)
+}
+
+func withPublicReadCORS(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Access-Control-Allow-Origin", "*")
+        w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type")
+        if r.Method == http.MethodOptions {
+            w.WriteHeader(http.StatusNoContent)
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
 }
 
 func (h *Handler) health(w http.ResponseWriter, _ *http.Request) {
