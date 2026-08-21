@@ -47,6 +47,15 @@ func Normalize(raw RawProduct) (catalog.Product, error) {
         return catalog.Product{}, fmt.Errorf("dia: regular price must be positive")
     }
 
+    packageAmount := raw.PackageAmount
+    packageUnit := catalog.NormalizePackageUnit(raw.PackageUnit)
+    if packageAmount <= 0 || packageUnit == "" {
+        if inferredAmount, inferredUnit, ok := catalog.InferPackageSize(raw.Name); ok {
+            packageAmount = inferredAmount
+            packageUnit = inferredUnit
+        }
+    }
+
     observedAt := raw.ObservedAt.UTC()
     if raw.ObservedAt.IsZero() {
         observedAt = time.Now().UTC()
@@ -58,11 +67,11 @@ func Normalize(raw RawProduct) (catalog.Product, error) {
         ExternalID:     raw.ExternalID,
         Name:           raw.Name,
         Brand:          strings.TrimSpace(raw.Brand),
-        PackageAmount:  raw.PackageAmount,
-        PackageUnit:    normalizeUnit(raw.PackageUnit),
+        PackageAmount:  packageAmount,
+        PackageUnit:    packageUnit,
         Price:          raw.RegularPrice,
         PricePerUnit:   raw.PricePerUnit,
-        PriceUnit:      normalizeUnit(raw.PriceUnit),
+        PriceUnit:      catalog.NormalizePackageUnit(raw.PriceUnit),
         PostalCode:     raw.PostalCode,
         VariableWeight: raw.VariableWeight,
         Available:      raw.Available,
@@ -83,21 +92,4 @@ func Normalize(raw RawProduct) (catalog.Product, error) {
     }
 
     return product, nil
-}
-
-func normalizeUnit(unit string) string {
-    switch strings.ToLower(strings.TrimSpace(unit)) {
-    case "kilo", "kilogramo", "kilogramos", "kg":
-        return "kg"
-    case "litro", "litros", "l":
-        return "l"
-    case "gramo", "gramos", "g":
-        return "g"
-    case "mililitro", "mililitros", "ml":
-        return "ml"
-    case "unidad", "unidades", "ud", "uds":
-        return "unit"
-    default:
-        return strings.ToLower(strings.TrimSpace(unit))
-    }
 }
