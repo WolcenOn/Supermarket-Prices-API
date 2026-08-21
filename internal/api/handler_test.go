@@ -21,6 +21,25 @@ func TestHealth(t *testing.T) {
     }
 }
 
+func TestPublicReadCORS(t *testing.T) {
+    h := NewHandler(catalog.NewMemoryStore(nil))
+    req := httptest.NewRequest(http.MethodOptions, "/api/v1/ingredients/arroz_redondo/quote", nil)
+    req.Header.Set("Origin", "https://example.test")
+    rec := httptest.NewRecorder()
+
+    h.Routes().ServeHTTP(rec, req)
+
+    if rec.Code != http.StatusNoContent {
+        t.Fatalf("expected 204, got %d", rec.Code)
+    }
+    if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+        t.Fatalf("expected wildcard public-read CORS, got %q", got)
+    }
+    if got := rec.Header().Get("Access-Control-Allow-Methods"); got != "GET, OPTIONS" {
+        t.Fatalf("unexpected allowed methods %q", got)
+    }
+}
+
 func TestSearchRequiresQuery(t *testing.T) {
     h := NewHandler(catalog.NewMemoryStore(nil))
     req := httptest.NewRequest(http.MethodGet, "/api/v1/products/search", nil)
