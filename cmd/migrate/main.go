@@ -97,6 +97,9 @@ func main() {
     }
 
     log.Printf("migrations complete: %d applied, %d total", applied, len(names))
+    if err := logSchemaTypes(ctx, conn); err != nil {
+        log.Printf("schema diagnostics failed: %v", err)
+    }
 }
 
 func alreadyApplied(ctx context.Context, conn *sql.Conn, name string) (bool, error) {
@@ -127,5 +130,33 @@ func applyMigration(ctx context.Context, conn *sql.Conn, name, contents string) 
     if err := tx.Commit(); err != nil {
         return fmt.Errorf("commit migration %s: %w", name, err)
     }
+    return nil
+}
+
+func logSchemaTypes(ctx context.Context, conn *sql.Conn) error {
+    rows, err := conn.QueryContext(ctx, `
+        SELECT table_name, column_name, data_type, udt_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name IN ('price_observations', 'supermarket_products', 'price_promotions')
+        ORDER BY table_name, ordinal_position
+    `)
+    if err != nil {
+        return fmt.Errorf("query information_schema.columns: %w", err)
+    }
+    defer rows.Close()
+
+    log.Printf("schema diagnostics begin")
+    for rows.Next() {
+        var tableName, columnName, dataType, udtName string
+        if err := rows.Scan(&tableName, &columnName, &dataType, &udtName); err != nil {
+            return fmt.Errorf("scan schema column: %w", err)
+        }
+        log.Printf("schema %s.%s type=%s udt=%s", tableName, columnName, dataType, udtName)
+    }
+    if err := rows.Err(); err != nil {
+        return fmt.Errorf("iterate schema columns: %w", err)
+    }
+    log.Printf("schema diagnostics end")
     return nil
 }
