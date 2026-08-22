@@ -1,8 +1,6 @@
 package dia
 
-import (
-    "testing"
-)
+import "testing"
 
 func TestParseProductDetailHTMLExtractsNutritionAndValidGTIN(t *testing.T) {
     document := `<!doctype html><html><head><script type="application/ld+json">{"gtin13":"8410830001016"}</script></head><body>
@@ -29,15 +27,55 @@ func TestParseProductDetailHTMLExtractsNutritionAndValidGTIN(t *testing.T) {
     if details.EAN != "8410830001016" {
         t.Fatalf("expected validated EAN, got %q", details.EAN)
     }
-    if details.IngredientsText != "Arroz redondo." {
-        t.Fatalf("unexpected ingredients %q", details.IngredientsText)
+    if details.SourceIngredientsBlock != "Arroz redondo." || details.IngredientsText != "Arroz redondo." {
+        t.Fatalf("unexpected ingredients semantics: %+v", details)
     }
-    if details.Nutrition == nil {
-        t.Fatal("expected nutrition")
+    if details.Nutrition == nil || details.NutritionSource != "dia_product_page" {
+        t.Fatalf("expected sourced nutrition, got %+v", details)
     }
     nutrition := details.Nutrition
     if nutrition.BasisAmount != 100 || nutrition.BasisUnit != "g" || nutrition.EnergyKcal != 345 || nutrition.CarbohydratesG != 77 || nutrition.ProteinG != 7 {
         t.Fatalf("unexpected nutrition: %+v", *nutrition)
+    }
+}
+
+func TestParseProductDetailHTMLKeepsDIAAttributeBlockSeparateFromIngredients(t *testing.T) {
+    document := `<html><body>
+<h1>Arroz vaporizado Dia Arrozona 1 Kg</h1>
+<div>Valor nutricional</div><div>Valores por 100g</div>
+<div>Valor energético</div><span>1410kJ</span><span>332kcal</span>
+<div>Proteínas</div><span>7g</span>
+<h2>Arroz parboliled categoria I</h2>
+<h2>Ingredientes</h2><div>Tipo de arroz: Vaporizado y precocido</div>
+<h2>Conservación y utilización</h2><div>Conservar en lugar fresco y seco.</div>
+</body></html>`
+
+    details := ParseProductDetailHTML(document)
+    if details.DescriptionText != "Arroz parboliled categoria I" {
+        t.Fatalf("unexpected description %q", details.DescriptionText)
+    }
+    if details.SourceIngredientsBlock != "Tipo de arroz: Vaporizado y precocido" {
+        t.Fatalf("unexpected source block %q", details.SourceIngredientsBlock)
+    }
+    if details.IngredientsText != "" {
+        t.Fatalf("DIA attribute block must not be treated as ingredient declaration: %q", details.IngredientsText)
+    }
+}
+
+func TestParseProductDetailHTMLKeepsPreparedProductTypeSeparateFromIngredients(t *testing.T) {
+    document := `<html><body>
+<h1>Arroz de marisco Dia Al Punto 330 g</h1>
+<h2>ARROZ CON MARISCO, SALSA CON TOMATE Y CALDO DE PESCADO. PRODUCTO ULTRACONGELADO.</h2>
+<h2>Ingredientes</h2><div>Tipo de producto: Arroz</div>
+<h2>Conservación y utilización</h2><div>Conservar congelado.</div>
+</body></html>`
+
+    details := ParseProductDetailHTML(document)
+    if details.DescriptionText == "" {
+        t.Fatal("expected prepared-product description")
+    }
+    if details.SourceIngredientsBlock != "Tipo de producto: Arroz" || details.IngredientsText != "" {
+        t.Fatalf("unexpected prepared-product ingredient semantics: %+v", details)
     }
 }
 

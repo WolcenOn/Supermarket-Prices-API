@@ -27,19 +27,22 @@ type NutritionFacts struct {
 }
 
 type ProductDetails struct {
-    ExternalID      string          `json:"externalId,omitempty"`
-    Name            string          `json:"name,omitempty"`
-    EAN             string          `json:"ean,omitempty"`
-    SourceURL       string          `json:"sourceUrl"`
-    IngredientsText string          `json:"ingredientsText,omitempty"`
-    ResponsibleText string          `json:"responsibleText,omitempty"`
-    Nutrition       *NutritionFacts `json:"nutrition,omitempty"`
+    ExternalID            string          `json:"externalId,omitempty"`
+    Name                  string          `json:"name,omitempty"`
+    EAN                   string          `json:"ean,omitempty"`
+    SourceURL             string          `json:"sourceUrl"`
+    DescriptionText       string          `json:"descriptionText,omitempty"`
+    SourceIngredientsBlock string         `json:"sourceIngredientsBlock,omitempty"`
+    IngredientsText       string          `json:"ingredientsText,omitempty"`
+    ResponsibleText       string          `json:"responsibleText,omitempty"`
+    NutritionSource       string          `json:"nutritionSource,omitempty"`
+    Nutrition             *NutritionFacts `json:"nutrition,omitempty"`
 }
 
 var (
-    h1RE        = regexp.MustCompile(`(?is)<h1[^>]*>(.*?)</h1>`)
-    gtinRE      = regexp.MustCompile(`(?is)(?:ean13|ean|gtin14|gtin13|gtin|barcode)[^0-9]{0,24}([0-9]{8,14})`)
-    basisRE     = regexp.MustCompile(`(?i)valores?\s+por\s+([0-9]+(?:[.,][0-9]+)?)\s*(g|ml)\b`)
+    h1RE         = regexp.MustCompile(`(?is)<h1[^>]*>(.*?)</h1>`)
+    gtinRE       = regexp.MustCompile(`(?is)(?:ean13|ean|gtin14|gtin13|gtin|barcode)[^0-9]{0,24}([0-9]{8,14})`)
+    basisRE      = regexp.MustCompile(`(?i)valores?\s+por\s+([0-9]+(?:[.,][0-9]+)?)\s*(g|ml)\b`)
     numberUnitRE = regexp.MustCompile(`(?i)([0-9]+(?:[.,][0-9]+)?)\s*(kj|kcal|g)\b`)
 )
 
@@ -83,16 +86,21 @@ func (s *HTTPSource) FetchProductDetails(ctx context.Context, rawURL string) (Pr
 func ParseProductDetailHTML(document string) ProductDetails {
     semantic := HTMLToSemanticText(document)
     lines := strings.Split(semantic, "\n")
+    sourceIngredients := extractSemanticSection(lines, "ingredientes", []string{"conservacion y utilizacion", "informacion del responsable"})
 
     details := ProductDetails{
-        Name:            extractH1(document),
-        EAN:             extractValidGTIN(document),
-        IngredientsText: extractSemanticSection(lines, "ingredientes", []string{"conservacion y utilizacion", "informacion del responsable"}),
-        ResponsibleText: extractSemanticSection(lines, "informacion del responsable", nil),
+        Name:                   extractH1(document),
+        EAN:                    extractValidGTIN(document),
+        DescriptionText:        extractDescriptionBeforeHeading(lines, "ingredientes"),
+        SourceIngredientsBlock: sourceIngredients,
+        ResponsibleText:        extractSemanticSection(lines, "informacion del responsable", nil),
     }
-
+    if looksLikeIngredientDeclaration(sourceIngredients) {
+        details.IngredientsText = sourceIngredients
+    }
     if nutrition, ok := parseNutrition(lines); ok {
         details.Nutrition = &nutrition
+        details.NutritionSource = "dia_product_page"
     }
     return details
 }
@@ -176,6 +184,63 @@ func extractH1(document string) string {
     value := tagRE.ReplaceAllString(match[1], " ")
     value = html.UnescapeString(value)
     return strings.Join(strings.Fields(value), " ")
+}
+
+func extractDescriptionBeforeHeading(lines []string, heading string) string {
+    target := normalizeDetailLabel(heading)
+    for i, line := range lines {
+        if normalizeDetailLabel(line) != target {
+            continue
+        }
+        for j := i - 1; j >= 0 && j >= i-4; j-- {
+            value := strings.TrimSpace(lines[j])
+            normalized := normalizeDetailLabel(value)
+            if value == "" || normalized == "/" || isNutritionLabel(normalized) {
+                continue
+            }
+            if _, _, ok := parseNumberUnit(value); ok {
+                continue
+            }
+            if basisRE.MatchString(normalized) {
+                continue
+            }
+            return value
+        }
+        break
+    }
+    return ""
+}
+
+func isNutritionLabel(value string) bool {
+    switch value {
+    case "valor nutricional", "valor energetico", "grasas", "de las cuales saturadas", "hidratos de carbono", "de los cuales azucares", "fibra", "fibra alimentaria", "proteinas", "sal":
+        return true
+    default:
+        return false
+    }
+}
+
+func looksLikeIngredientDeclaration(value string) bool {
+    normalized := normalizeDetailLabel(value)
+    if normalized == "" {
+        return false
+    }
+    nonDeclarations := []string{
+        "tipo de ",
+        "tipo del ",
+        "tipo producto ",
+        "variedad ",
+        "categoria ",
+        "calibre ",
+        "origen ",
+        "formato ",
+    }
+    for _, prefix := range nonDeclarations {
+        if strings.HasPrefix(normalized, prefix) {
+            return false
+        }
+    }
+    return true
 }
 
 func extractSemanticSection(lines []string, heading string, stops []string) string {
