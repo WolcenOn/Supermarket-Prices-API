@@ -38,7 +38,7 @@ type Product struct {
     SourceCategoryPath   string      `json:"sourceCategoryPath,omitempty"`
     ItemType             string      `json:"itemType,omitempty"`
     NormalizedCategory   string      `json:"normalizedCategory,omitempty"`
-    RecipeCompatible     bool        `json:"recipeCompatible,omitempty"`
+    RecipeCompatible     bool        `json:"recipeCompatible"`
     ClassificationStatus string      `json:"classificationStatus,omitempty"`
     ClassificationScore  float64     `json:"classificationScore,omitempty"`
     ClassificationSource string      `json:"classificationSource,omitempty"`
