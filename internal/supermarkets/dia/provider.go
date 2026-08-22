@@ -6,6 +6,7 @@ import (
     "strings"
 
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
+    "github.com/WolcenOn/Supermarket-Prices-API/internal/classification"
 )
 
 // Source is the DIA-specific acquisition boundary.
@@ -50,6 +51,7 @@ func (p *Provider) Search(ctx context.Context, query, postalCode string) ([]cata
         if err != nil {
             continue
         }
+        classification.Apply(&product)
         products = append(products, product)
     }
 
