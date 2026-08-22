@@ -34,8 +34,32 @@ func TestParseProductDetailHTMLExtractsNutritionAndValidGTIN(t *testing.T) {
         t.Fatalf("expected sourced nutrition, got %+v", details)
     }
     nutrition := details.Nutrition
-    if nutrition.BasisAmount != 100 || nutrition.BasisUnit != "g" || nutrition.EnergyKcal != 345 || nutrition.CarbohydratesG != 77 || nutrition.ProteinG != 7 {
+    if value(nutrition.BasisAmount) != 100 || nutrition.BasisUnit != "g" || value(nutrition.EnergyKcal) != 345 || value(nutrition.CarbohydratesG) != 77 || value(nutrition.ProteinG) != 7 {
         t.Fatalf("unexpected nutrition: %+v", *nutrition)
+    }
+}
+
+func TestParseProductDetailHTMLPreservesPublishedZeroVersusMissing(t *testing.T) {
+    document := `<html><body>
+<h1>Agua mineral</h1>
+<div>Valor nutricional</div><div>Valores por 100ml</div>
+<div>Valor energético</div><span>0kJ</span><span>0kcal</span>
+<div>Grasas</div><span>0g</span>
+<div>Sal</div><span>0,01g</span>
+</body></html>`
+
+    details := ParseProductDetailHTML(document)
+    if details.Nutrition == nil {
+        t.Fatal("expected nutrition")
+    }
+    if details.Nutrition.EnergyKcal == nil || value(details.Nutrition.EnergyKcal) != 0 {
+        t.Fatalf("published zero kcal must remain present: %+v", details.Nutrition)
+    }
+    if details.Nutrition.FatG == nil || value(details.Nutrition.FatG) != 0 {
+        t.Fatalf("published zero fat must remain present: %+v", details.Nutrition)
+    }
+    if details.Nutrition.ProteinG != nil {
+        t.Fatalf("missing protein must remain absent, got %+v", details.Nutrition)
     }
 }
 
@@ -100,4 +124,11 @@ func TestAttachProductSourceURLsUsesMatchingSKUAndDIAHost(t *testing.T) {
     if products[1].SourceURL != "https://www.dia.es/arroz-pastas-y-legumbres/arroz/p/21415" {
         t.Fatalf("unexpected source URL %q", products[1].SourceURL)
     }
+}
+
+func value(input *float64) float64 {
+    if input == nil {
+        return 0
+    }
+    return *input
 }
