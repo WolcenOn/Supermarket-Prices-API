@@ -45,6 +45,14 @@ var preparedRiceTerms = []string{
 // products intentionally remain unmatched for later review instead of forcing a
 // potentially wrong canonical ingredient.
 func Suggest(product catalog.Product) []Match {
+    // New imports are classified before matching. A classified non-recipe item
+    // must never be promoted to a canonical recipe ingredient just because its
+    // commercial name contains the same words. Legacy/unclassified products
+    // keep the previous matching behavior until they are re-imported.
+    if product.ClassificationStatus != "" && !product.RecipeCompatible {
+        return nil
+    }
+
     name := normalize(product.Name)
     if name == "" || isPreparedRice(name) {
         return nil
