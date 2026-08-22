@@ -141,17 +141,17 @@ func SaveProductNutrition(ctx context.Context, db *sql.DB, nutrition catalog.Pro
         strings.TrimSpace(nutrition.SourceIngredientsBlock),
         strings.TrimSpace(nutrition.IngredientsText),
         strings.TrimSpace(nutrition.ResponsibleText),
-        nutrition.BasisAmount,
+        nullableNutritionValue(nutrition.BasisAmount),
         nutrition.BasisUnit,
-        nutrition.EnergyKJ,
-        nutrition.EnergyKcal,
-        nutrition.FatG,
-        nutrition.SaturatedFatG,
-        nutrition.CarbohydratesG,
-        nutrition.SugarsG,
-        nutrition.FiberG,
-        nutrition.ProteinG,
-        nutrition.SaltG,
+        nullableNutritionValue(nutrition.EnergyKJ),
+        nullableNutritionValue(nutrition.EnergyKcal),
+        nullableNutritionValue(nutrition.FatG),
+        nullableNutritionValue(nutrition.SaturatedFatG),
+        nullableNutritionValue(nutrition.CarbohydratesG),
+        nullableNutritionValue(nutrition.SugarsG),
+        nullableNutritionValue(nutrition.FiberG),
+        nullableNutritionValue(nutrition.ProteinG),
+        nullableNutritionValue(nutrition.SaltG),
     )
     if err != nil {
         return catalog.ProductNutrition{}, fmt.Errorf("postgres nutrition: upsert %s/%s from %s: %w", nutrition.SupermarketID, nutrition.ExternalID, nutrition.Source, err)
@@ -176,6 +176,17 @@ func LoadProductNutrition(ctx context.Context, db *sql.DB, supermarketID, extern
     source = strings.TrimSpace(source)
 
     var item catalog.ProductNutrition
+    var basisAmount sql.NullFloat64
+    var energyKJ sql.NullFloat64
+    var energyKcal sql.NullFloat64
+    var fatG sql.NullFloat64
+    var saturatedFatG sql.NullFloat64
+    var carbohydratesG sql.NullFloat64
+    var sugarsG sql.NullFloat64
+    var fiberG sql.NullFloat64
+    var proteinG sql.NullFloat64
+    var saltG sql.NullFloat64
+
     err := db.QueryRowContext(ctx, `
         SELECT
             sp.id::text,
@@ -217,17 +228,17 @@ func LoadProductNutrition(ctx context.Context, db *sql.DB, supermarketID, extern
         &item.SourceIngredientsBlock,
         &item.IngredientsText,
         &item.ResponsibleText,
-        &item.BasisAmount,
+        &basisAmount,
         &item.BasisUnit,
-        &item.EnergyKJ,
-        &item.EnergyKcal,
-        &item.FatG,
-        &item.SaturatedFatG,
-        &item.CarbohydratesG,
-        &item.SugarsG,
-        &item.FiberG,
-        &item.ProteinG,
-        &item.SaltG,
+        &energyKJ,
+        &energyKcal,
+        &fatG,
+        &saturatedFatG,
+        &carbohydratesG,
+        &sugarsG,
+        &fiberG,
+        &proteinG,
+        &saltG,
     )
     if err == sql.ErrNoRows {
         return catalog.ProductNutrition{}, fmt.Errorf("postgres nutrition: no nutrition for %s/%s from %s", supermarketID, externalID, source)
@@ -235,6 +246,32 @@ func LoadProductNutrition(ctx context.Context, db *sql.DB, supermarketID, extern
     if err != nil {
         return catalog.ProductNutrition{}, fmt.Errorf("postgres nutrition: load %s/%s from %s: %w", supermarketID, externalID, source, err)
     }
+
+    item.BasisAmount = nutritionPointer(basisAmount)
+    item.EnergyKJ = nutritionPointer(energyKJ)
+    item.EnergyKcal = nutritionPointer(energyKcal)
+    item.FatG = nutritionPointer(fatG)
+    item.SaturatedFatG = nutritionPointer(saturatedFatG)
+    item.CarbohydratesG = nutritionPointer(carbohydratesG)
+    item.SugarsG = nutritionPointer(sugarsG)
+    item.FiberG = nutritionPointer(fiberG)
+    item.ProteinG = nutritionPointer(proteinG)
+    item.SaltG = nutritionPointer(saltG)
     item.ObservedAt = item.ObservedAt.UTC()
     return item, nil
+}
+
+func nullableNutritionValue(value *float64) any {
+    if value == nil {
+        return nil
+    }
+    return *value
+}
+
+func nutritionPointer(value sql.NullFloat64) *float64 {
+    if !value.Valid {
+        return nil
+    }
+    copy := value.Float64
+    return &copy
 }
