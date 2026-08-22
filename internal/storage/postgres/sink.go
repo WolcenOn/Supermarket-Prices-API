@@ -66,6 +66,8 @@ func saveProduct(ctx context.Context, tx *sql.Tx, product catalog.Product) error
             classification_status,
             classification_score,
             classification_source,
+            ean,
+            source_url,
             updated_at
         ) VALUES (
             $1,
@@ -84,6 +86,8 @@ func saveProduct(ctx context.Context, tx *sql.Tx, product catalog.Product) error
             NULLIF($14, ''),
             NULLIF($15::numeric, 0::numeric),
             NULLIF($16, ''),
+            NULLIF($17, ''),
+            NULLIF($18, ''),
             NOW()
         )
         ON CONFLICT (supermarket_id, external_id)
@@ -102,6 +106,8 @@ func saveProduct(ctx context.Context, tx *sql.Tx, product catalog.Product) error
             classification_status = EXCLUDED.classification_status,
             classification_score = EXCLUDED.classification_score,
             classification_source = EXCLUDED.classification_source,
+            ean = COALESCE(EXCLUDED.ean, supermarket_products.ean),
+            source_url = COALESCE(EXCLUDED.source_url, supermarket_products.source_url),
             updated_at = NOW()
         RETURNING id::text
     `,
@@ -121,6 +127,8 @@ func saveProduct(ctx context.Context, tx *sql.Tx, product catalog.Product) error
         strings.TrimSpace(product.ClassificationStatus),
         product.ClassificationScore,
         strings.TrimSpace(product.ClassificationSource),
+        strings.TrimSpace(product.EAN),
+        strings.TrimSpace(product.SourceURL),
     ).Scan(&productID)
     if err != nil {
         return fmt.Errorf("postgres sink: upsert %s/%s: %w", product.SupermarketID, product.ExternalID, err)
