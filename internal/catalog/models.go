@@ -23,6 +23,8 @@ type Product struct {
     ExternalID           string      `json:"externalId"`
     Name                 string      `json:"name"`
     Brand                string      `json:"brand,omitempty"`
+    EAN                  string      `json:"ean,omitempty"`
+    SourceURL            string      `json:"sourceUrl,omitempty"`
     PackageAmount        float64     `json:"packageAmount,omitempty"`
     PackageUnit          string      `json:"packageUnit,omitempty"`
     Price                float64     `json:"price"`
