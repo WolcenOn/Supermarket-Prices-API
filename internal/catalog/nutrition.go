@@ -1,6 +1,9 @@
 package catalog
 
-import "time"
+import (
+    "context"
+    "time"
+)
 
 // ProductNutrition is a sourced nutrition snapshot for one exact commercial
 // product. Pointer nutrient values deliberately distinguish a published zero
@@ -28,4 +31,12 @@ type ProductNutrition struct {
     FiberG                 *float64  `json:"fiberG,omitempty"`
     ProteinG               *float64  `json:"proteinG,omitempty"`
     SaltG                  *float64  `json:"saltG,omitempty"`
+}
+
+// NutritionStore exposes sourced nutrition snapshots already persisted for an
+// exact commercial product. It is read-only and deliberately returns every
+// available source so callers can distinguish DIA data from future sources
+// such as Open Food Facts.
+type NutritionStore interface {
+    ProductNutrition(ctx context.Context, productID string) ([]ProductNutrition, error)
 }

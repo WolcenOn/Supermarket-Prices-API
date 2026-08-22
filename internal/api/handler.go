@@ -10,17 +10,21 @@ import (
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
 )
 
-const Version = "0.3.2"
+const Version = "0.3.3"
 
 type Handler struct {
     store           catalog.Store
     ingredientStore catalog.IngredientStore
+    nutritionStore  catalog.NutritionStore
 }
 
 func NewHandler(store catalog.Store) *Handler {
     handler := &Handler{store: store}
     if ingredientStore, ok := store.(catalog.IngredientStore); ok {
         handler.ingredientStore = ingredientStore
+    }
+    if nutritionStore, ok := store.(catalog.NutritionStore); ok {
+        handler.nutritionStore = nutritionStore
     }
     return handler
 }
@@ -31,6 +35,7 @@ func (h *Handler) Routes() http.Handler {
     mux.HandleFunc("GET /api/v1/version", h.version)
     mux.HandleFunc("GET /api/v1/supermarkets", h.supermarkets)
     mux.HandleFunc("GET /api/v1/products/search", h.searchProducts)
+    mux.HandleFunc("GET /api/v1/products/{id}/nutrition", h.productNutrition)
     mux.HandleFunc("GET /api/v1/ingredients", h.ingredients)
     mux.HandleFunc("GET /api/v1/ingredients/search", h.searchIngredients)
     mux.HandleFunc("GET /api/v1/ingredients/{id}/products", h.ingredientProducts)
@@ -90,6 +95,31 @@ func (h *Handler) searchProducts(w http.ResponseWriter, r *http.Request) {
         "postalCode": postalCode,
         "count": len(products),
         "items": products,
+    })
+}
+
+func (h *Handler) productNutrition(w http.ResponseWriter, r *http.Request) {
+    if !h.requireNutritionStore(w) {
+        return
+    }
+    productID := strings.TrimSpace(r.PathValue("id"))
+    if productID == "" {
+        writeJSON(w, http.StatusBadRequest, map[string]any{
+            "error": "missing_product_id",
+            "message": "product id is required",
+        })
+        return
+    }
+
+    items, err := h.nutritionStore.ProductNutrition(r.Context(), productID)
+    if err != nil {
+        writeStoreError(w)
+        return
+    }
+    writeJSON(w, http.StatusOK, map[string]any{
+        "productId": productID,
+        "count": len(items),
+        "items": items,
     })
 }
 
@@ -234,6 +264,17 @@ func (h *Handler) requireIngredientStore(w http.ResponseWriter) bool {
     writeJSON(w, http.StatusServiceUnavailable, map[string]any{
         "error": "ingredient_catalog_unavailable",
         "message": "canonical ingredient catalog is not configured",
+    })
+    return false
+}
+
+func (h *Handler) requireNutritionStore(w http.ResponseWriter) bool {
+    if h.nutritionStore != nil {
+        return true
+    }
+    writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+        "error": "nutrition_catalog_unavailable",
+        "message": "product nutrition catalog is not configured",
     })
     return false
 }
