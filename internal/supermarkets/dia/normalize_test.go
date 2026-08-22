@@ -12,6 +12,8 @@ func TestNormalizeClubPromotion(t *testing.T) {
         ExternalID:       "12345",
         Name:             "Hummus clásico Dia Al Punto 220 g",
         Brand:            "Dia Al Punto",
+        EAN:              "8410830001016",
+        SourceURL:        "https://www.dia.es/algo/p/12345",
         PackageAmount:    220,
         PackageUnit:      "g",
         RegularPrice:     1.29,
@@ -31,6 +33,9 @@ func TestNormalizeClubPromotion(t *testing.T) {
 
     if product.ID != "dia-12345" || product.SupermarketID != "dia" {
         t.Fatalf("unexpected product identity: %#v", product)
+    }
+    if product.EAN != "8410830001016" || product.SourceURL != "https://www.dia.es/algo/p/12345" {
+        t.Fatalf("unexpected identifiers: ean=%q source=%q", product.EAN, product.SourceURL)
     }
     if product.PriceUnit != "kg" {
         t.Fatalf("PriceUnit = %q, want kg", product.PriceUnit)
