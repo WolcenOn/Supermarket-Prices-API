@@ -14,8 +14,9 @@ import (
 )
 
 var (
-    tagRE       = regexp.MustCompile(`(?s)<[^>]*>`)
-    whitespace = regexp.MustCompile(`[\t\f\v ]+`)
+    tagRE         = regexp.MustCompile(`(?s)<[^>]*>`)
+    whitespace    = regexp.MustCompile(`[\t\f\v ]+`)
+    productHrefRE = regexp.MustCompile(`(?is)href\s*=\s*["']([^"']*/p/([0-9]+)(?:[?#][^"']*)?)["']`)
 )
 
 const defaultBrowserUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Supermarket-Prices-API/0.1"
@@ -39,7 +40,7 @@ func NewHTTPSource(categoryURLs []string) *HTTPSource {
     }
 }
 
-func (s *HTTPSource) Search(ctx context.Context, query, postalCode string) ([]RawProduct, error) {
+func (s *HTTPSource) ensureDefaults() {
     if s.Client == nil {
         s.Client = &http.Client{Timeout: 20 * time.Second}
     }
@@ -49,6 +50,18 @@ func (s *HTTPSource) Search(ctx context.Context, query, postalCode string) ([]Ra
     if strings.TrimSpace(s.UserAgent) == "" {
         s.UserAgent = defaultBrowserUserAgent
     }
+}
+
+func (s *HTTPSource) setBrowserHeaders(req *http.Request) {
+    req.Header.Set("User-Agent", s.UserAgent)
+    req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+    req.Header.Set("Accept-Language", "es-ES,es;q=0.9,en;q=0.5")
+    req.Header.Set("Cache-Control", "no-cache")
+    req.Header.Set("Pragma", "no-cache")
+}
+
+func (s *HTTPSource) Search(ctx context.Context, query, postalCode string) ([]RawProduct, error) {
+    s.ensureDefaults()
 
     var products []RawProduct
     for _, categoryURL := range s.CategoryURLs {
@@ -61,11 +74,7 @@ func (s *HTTPSource) Search(ctx context.Context, query, postalCode string) ([]Ra
         if err != nil {
             return nil, fmt.Errorf("dia: build category request: %w", err)
         }
-        req.Header.Set("User-Agent", s.UserAgent)
-        req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-        req.Header.Set("Accept-Language", "es-ES,es;q=0.9,en;q=0.5")
-        req.Header.Set("Cache-Control", "no-cache")
-        req.Header.Set("Pragma", "no-cache")
+        s.setBrowserHeaders(req)
 
         resp, err := s.Client.Do(req)
         if err != nil {
@@ -81,10 +90,12 @@ func (s *HTTPSource) Search(ctx context.Context, query, postalCode string) ([]Ra
             return nil, fmt.Errorf("dia: fetch %s: unexpected status %d", categoryURL, resp.StatusCode)
         }
 
-        pageProducts, err := parseCategoryHTML(string(body), postalCode, s.Now().UTC())
+        document := string(body)
+        pageProducts, err := parseCategoryHTML(document, postalCode, s.Now().UTC())
         if err != nil {
             return nil, fmt.Errorf("dia: parse %s: %w", categoryURL, err)
         }
+        attachProductSourceURLs(document, categoryURL, pageProducts)
         categoryID, categoryName, categoryPath := sourceCategoryFromURL(categoryURL)
         for i := range pageProducts {
             pageProducts[i].SourceCategoryID = categoryID
@@ -109,6 +120,52 @@ func parseCategoryHTML(document, postalCode string, observedAt time.Time) ([]Raw
     return nil, fmt.Errorf("no products parsed (sku markers visible=%t, response_bytes=%d, first_sku=%q)", visibleMarkers, len(document), snippet)
 }
 
+func attachProductSourceURLs(document, pageURL string, products []RawProduct) {
+    base, err := url.Parse(strings.TrimSpace(pageURL))
+    if err != nil {
+        return
+    }
+
+    bySKU := make(map[string]string)
+    for _, match := range productHrefRE.FindAllStringSubmatch(document, -1) {
+        if len(match) < 3 {
+            continue
+        }
+        href := html.UnescapeString(strings.TrimSpace(match[1]))
+        sku := strings.TrimSpace(match[2])
+        ref, err := url.Parse(href)
+        if err != nil {
+            continue
+        }
+        resolved := base.ResolveReference(ref)
+        if !isPublicDIAProductURL(resolved) {
+            continue
+        }
+        resolved.RawQuery = ""
+        resolved.Fragment = ""
+        if _, exists := bySKU[sku]; !exists {
+            bySKU[sku] = resolved.String()
+        }
+    }
+
+    for i := range products {
+        if sourceURL, ok := bySKU[strings.TrimSpace(products[i].ExternalID)]; ok {
+            products[i].SourceURL = sourceURL
+        }
+    }
+}
+
+func isPublicDIAProductURL(parsed *url.URL) bool {
+    if parsed == nil || parsed.Scheme != "https" {
+        return false
+    }
+    host := strings.ToLower(parsed.Hostname())
+    if host != "dia.es" && host != "www.dia.es" {
+        return false
+    }
+    return regexp.MustCompile(`/p/[0-9]+/?$`).MatchString(parsed.Path)
+}
+
 // HTMLToSemanticText converts DIA category HTML into a line-oriented snapshot.
 // Product names/prices live in anchors and spans, so closing those elements is
 // treated as a semantic boundary rather than flattening the entire card into a
@@ -116,7 +173,7 @@ func parseCategoryHTML(document, postalCode string, observedAt time.Time) ([]Raw
 func HTMLToSemanticText(document string) string {
     document = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`).ReplaceAllString(document, "\n")
     document = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`).ReplaceAllString(document, "\n")
-    document = regexp.MustCompile(`(?i)<br\s*/?>|</p>|</div>|</li>|</article>|</section>|</button>|</a>|</span>|</strong>`).ReplaceAllString(document, "\n")
+    document = regexp.MustCompile(`(?i)<br\s*/?>|</p>|</div>|</li>|</article>|</section>|</button>|</a>|</span>|</strong>|</h1>|</h2>|</h3>`).ReplaceAllString(document, "\n")
     document = tagRE.ReplaceAllString(document, " ")
     document = html.UnescapeString(document)
 

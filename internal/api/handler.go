@@ -10,7 +10,7 @@ import (
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
 )
 
-const Version = "0.3.1"
+const Version = "0.3.2"
 
 type Handler struct {
     store           catalog.Store

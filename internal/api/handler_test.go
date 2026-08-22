@@ -81,6 +81,8 @@ func TestSearchReturnsClassificationMetadata(t *testing.T) {
             SupermarketID:        "dia",
             ExternalID:           "28809",
             Name:                 "Arroz vaporizado Dia Arrozona 1 Kg",
+            EAN:                  "8410830001016",
+            SourceURL:            "https://www.dia.es/arroz-pastas-y-legumbres/arroz/p/28809",
             PostalCode:           "28001",
             SourceCategoryID:     "L106",
             SourceCategoryName:   "Arroz pastas y legumbres",
@@ -119,5 +121,8 @@ func TestSearchReturnsClassificationMetadata(t *testing.T) {
     }
     if got.NormalizedCategory != "food.pantry.cereal.rice" || got.ClassificationSource != "rules:v1" {
         t.Fatalf("unexpected classification metadata: %#v", got)
+    }
+    if got.EAN != "8410830001016" || got.SourceURL == "" {
+        t.Fatalf("product identifiers missing from JSON: %#v", got)
     }
 }

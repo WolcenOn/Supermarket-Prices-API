@@ -17,6 +17,8 @@ type RawProduct struct {
     ExternalID         string
     Name               string
     Brand              string
+    EAN                string
+    SourceURL          string
     PackageAmount      float64
     PackageUnit        string
     RegularPrice       float64
@@ -70,6 +72,8 @@ func Normalize(raw RawProduct) (catalog.Product, error) {
         ExternalID:         raw.ExternalID,
         Name:               raw.Name,
         Brand:              strings.TrimSpace(raw.Brand),
+        EAN:                strings.TrimSpace(raw.EAN),
+        SourceURL:          strings.TrimSpace(raw.SourceURL),
         PackageAmount:      packageAmount,
         PackageUnit:        packageUnit,
         Price:              raw.RegularPrice,
