@@ -14,22 +14,25 @@ const supermarketID = "dia"
 // It is intentionally source-agnostic enough to be populated from structured
 // public data or HTML parsing without leaking DIA-specific fields to consumers.
 type RawProduct struct {
-    ExternalID       string
-    Name             string
-    Brand            string
-    PackageAmount    float64
-    PackageUnit      string
-    RegularPrice     float64
-    PricePerUnit     float64
-    PriceUnit        string
-    PromotionalPrice float64
-    PromotionLabel   string
-    PromotionType    string
-    DiscountPct      float64
-    PostalCode       string
-    VariableWeight   bool
-    Available        bool
-    ObservedAt       time.Time
+    ExternalID         string
+    Name               string
+    Brand              string
+    PackageAmount      float64
+    PackageUnit        string
+    RegularPrice       float64
+    PricePerUnit       float64
+    PriceUnit          string
+    PromotionalPrice   float64
+    PromotionLabel     string
+    PromotionType      string
+    DiscountPct        float64
+    PostalCode         string
+    VariableWeight     bool
+    Available          bool
+    ObservedAt         time.Time
+    SourceCategoryID   string
+    SourceCategoryName string
+    SourceCategoryPath string
 }
 
 func Normalize(raw RawProduct) (catalog.Product, error) {
@@ -62,20 +65,23 @@ func Normalize(raw RawProduct) (catalog.Product, error) {
     }
 
     product := catalog.Product{
-        ID:             supermarketID + "-" + raw.ExternalID,
-        SupermarketID:  supermarketID,
-        ExternalID:     raw.ExternalID,
-        Name:           raw.Name,
-        Brand:          strings.TrimSpace(raw.Brand),
-        PackageAmount:  packageAmount,
-        PackageUnit:    packageUnit,
-        Price:          raw.RegularPrice,
-        PricePerUnit:   raw.PricePerUnit,
-        PriceUnit:      catalog.NormalizePackageUnit(raw.PriceUnit),
-        PostalCode:     raw.PostalCode,
-        VariableWeight: raw.VariableWeight,
-        Available:      raw.Available,
-        ObservedAt:     observedAt,
+        ID:                 supermarketID + "-" + raw.ExternalID,
+        SupermarketID:      supermarketID,
+        ExternalID:         raw.ExternalID,
+        Name:               raw.Name,
+        Brand:              strings.TrimSpace(raw.Brand),
+        PackageAmount:      packageAmount,
+        PackageUnit:        packageUnit,
+        Price:              raw.RegularPrice,
+        PricePerUnit:       raw.PricePerUnit,
+        PriceUnit:          catalog.NormalizePackageUnit(raw.PriceUnit),
+        PostalCode:         raw.PostalCode,
+        VariableWeight:     raw.VariableWeight,
+        Available:          raw.Available,
+        ObservedAt:         observedAt,
+        SourceCategoryID:   strings.TrimSpace(raw.SourceCategoryID),
+        SourceCategoryName: strings.TrimSpace(raw.SourceCategoryName),
+        SourceCategoryPath: strings.TrimSpace(raw.SourceCategoryPath),
     }
 
     if raw.PromotionLabel != "" || raw.PromotionalPrice > 0 {
