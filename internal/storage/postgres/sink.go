@@ -57,8 +57,35 @@ func saveProduct(ctx context.Context, tx *sql.Tx, product catalog.Product) error
             package_amount,
             package_unit,
             variable_weight,
+            source_category_id,
+            source_category_name,
+            source_category_path,
+            item_type,
+            normalized_category,
+            recipe_compatible,
+            classification_status,
+            classification_score,
+            classification_source,
             updated_at
-        ) VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5::numeric, 0::numeric), NULLIF($6, ''), $7, NOW())
+        ) VALUES (
+            $1,
+            $2,
+            $3,
+            NULLIF($4, ''),
+            NULLIF($5::numeric, 0::numeric),
+            NULLIF($6, ''),
+            $7,
+            NULLIF($8, ''),
+            NULLIF($9, ''),
+            NULLIF($10, ''),
+            NULLIF($11, ''),
+            NULLIF($12, ''),
+            $13,
+            NULLIF($14, ''),
+            NULLIF($15::numeric, 0::numeric),
+            NULLIF($16, ''),
+            NOW()
+        )
         ON CONFLICT (supermarket_id, external_id)
         DO UPDATE SET
             name = EXCLUDED.name,
@@ -66,6 +93,15 @@ func saveProduct(ctx context.Context, tx *sql.Tx, product catalog.Product) error
             package_amount = EXCLUDED.package_amount,
             package_unit = EXCLUDED.package_unit,
             variable_weight = EXCLUDED.variable_weight,
+            source_category_id = EXCLUDED.source_category_id,
+            source_category_name = EXCLUDED.source_category_name,
+            source_category_path = EXCLUDED.source_category_path,
+            item_type = EXCLUDED.item_type,
+            normalized_category = EXCLUDED.normalized_category,
+            recipe_compatible = EXCLUDED.recipe_compatible,
+            classification_status = EXCLUDED.classification_status,
+            classification_score = EXCLUDED.classification_score,
+            classification_source = EXCLUDED.classification_source,
             updated_at = NOW()
         RETURNING id::text
     `,
@@ -76,6 +112,15 @@ func saveProduct(ctx context.Context, tx *sql.Tx, product catalog.Product) error
         product.PackageAmount,
         strings.TrimSpace(product.PackageUnit),
         product.VariableWeight,
+        strings.TrimSpace(product.SourceCategoryID),
+        strings.TrimSpace(product.SourceCategoryName),
+        strings.TrimSpace(product.SourceCategoryPath),
+        strings.TrimSpace(product.ItemType),
+        strings.TrimSpace(product.NormalizedCategory),
+        product.RecipeCompatible,
+        strings.TrimSpace(product.ClassificationStatus),
+        product.ClassificationScore,
+        strings.TrimSpace(product.ClassificationSource),
     ).Scan(&productID)
     if err != nil {
         return fmt.Errorf("postgres sink: upsert %s/%s: %w", product.SupermarketID, product.ExternalID, err)

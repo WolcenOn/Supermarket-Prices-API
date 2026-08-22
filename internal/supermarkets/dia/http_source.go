@@ -6,9 +6,11 @@ import (
     "html"
     "io"
     "net/http"
+    "net/url"
     "regexp"
     "strings"
     "time"
+    "unicode"
 )
 
 var (
@@ -83,6 +85,12 @@ func (s *HTTPSource) Search(ctx context.Context, query, postalCode string) ([]Ra
         if err != nil {
             return nil, fmt.Errorf("dia: parse %s: %w", categoryURL, err)
         }
+        categoryID, categoryName, categoryPath := sourceCategoryFromURL(categoryURL)
+        for i := range pageProducts {
+            pageProducts[i].SourceCategoryID = categoryID
+            pageProducts[i].SourceCategoryName = categoryName
+            pageProducts[i].SourceCategoryPath = categoryPath
+        }
         products = append(products, pageProducts...)
     }
 
@@ -127,6 +135,42 @@ func HTMLToSemanticText(document string) string {
         }
     }
     return strings.Join(cleaned, "\n")
+}
+
+func sourceCategoryFromURL(rawURL string) (id, name, path string) {
+    parsed, err := url.Parse(strings.TrimSpace(rawURL))
+    if err != nil {
+        return "", "", ""
+    }
+
+    path = strings.Trim(parsed.Path, "/")
+    segments := strings.Split(path, "/")
+    categorySlug := ""
+    for i, segment := range segments {
+        if segment == "c" && i+1 < len(segments) {
+            id = strings.TrimSpace(segments[i+1])
+            if i > 0 {
+                categorySlug = strings.TrimSpace(segments[i-1])
+            }
+            break
+        }
+    }
+
+    if categorySlug == "" && len(segments) > 0 {
+        categorySlug = strings.TrimSpace(segments[0])
+    }
+    name = humanizeCategorySlug(categorySlug)
+    return id, name, path
+}
+
+func humanizeCategorySlug(slug string) string {
+    value := strings.TrimSpace(strings.ReplaceAll(slug, "-", " "))
+    if value == "" {
+        return ""
+    }
+    runes := []rune(value)
+    runes[0] = unicode.ToUpper(runes[0])
+    return string(runes)
 }
 
 func firstSKUSnippet(semantic string) string {

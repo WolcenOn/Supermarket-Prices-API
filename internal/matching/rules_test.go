@@ -39,3 +39,18 @@ func TestSuggestRejectsPreparedRice(t *testing.T) {
         }
     }
 }
+
+func TestSuggestRespectsExplicitNonRecipeClassification(t *testing.T) {
+    product := catalog.Product{
+        SupermarketID:        "dia",
+        ExternalID:           "prepared-rice",
+        Name:                 "Arroz redondo especial 300 g",
+        ItemType:             "prepared_food",
+        RecipeCompatible:     false,
+        ClassificationStatus: "classified",
+    }
+
+    if matches := Suggest(product); len(matches) != 0 {
+        t.Fatalf("classified prepared product unexpectedly matched: %#v", matches)
+    }
+}
