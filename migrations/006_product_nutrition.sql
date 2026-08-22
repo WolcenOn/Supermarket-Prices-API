@@ -1,0 +1,37 @@
+CREATE TABLE IF NOT EXISTS product_nutrition (
+    supermarket_product_id UUID NOT NULL REFERENCES supermarket_products(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    source_url TEXT,
+    observed_at TIMESTAMPTZ NOT NULL,
+    description_text TEXT,
+    source_ingredients_block TEXT,
+    ingredients_text TEXT,
+    responsible_text TEXT,
+    basis_amount NUMERIC(12,3),
+    basis_unit TEXT,
+    energy_kj NUMERIC(14,4),
+    energy_kcal NUMERIC(14,4),
+    fat_g NUMERIC(14,4),
+    saturated_fat_g NUMERIC(14,4),
+    carbohydrates_g NUMERIC(14,4),
+    sugars_g NUMERIC(14,4),
+    fiber_g NUMERIC(14,4),
+    protein_g NUMERIC(14,4),
+    salt_g NUMERIC(14,4),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (supermarket_product_id, source),
+    CHECK (basis_amount IS NULL OR basis_amount > 0),
+    CHECK (energy_kj IS NULL OR energy_kj >= 0),
+    CHECK (energy_kcal IS NULL OR energy_kcal >= 0),
+    CHECK (fat_g IS NULL OR fat_g >= 0),
+    CHECK (saturated_fat_g IS NULL OR saturated_fat_g >= 0),
+    CHECK (carbohydrates_g IS NULL OR carbohydrates_g >= 0),
+    CHECK (sugars_g IS NULL OR sugars_g >= 0),
+    CHECK (fiber_g IS NULL OR fiber_g >= 0),
+    CHECK (protein_g IS NULL OR protein_g >= 0),
+    CHECK (salt_g IS NULL OR salt_g >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_nutrition_source
+    ON product_nutrition(source, observed_at DESC);
