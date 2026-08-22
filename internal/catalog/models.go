@@ -18,21 +18,30 @@ type Promotion struct {
 }
 
 type Product struct {
-    ID             string      `json:"id"`
-    SupermarketID  string      `json:"supermarketId"`
-    ExternalID     string      `json:"externalId"`
-    Name           string      `json:"name"`
-    Brand          string      `json:"brand,omitempty"`
-    PackageAmount  float64     `json:"packageAmount,omitempty"`
-    PackageUnit    string      `json:"packageUnit,omitempty"`
-    Price          float64     `json:"price"`
-    PricePerUnit   float64     `json:"pricePerUnit,omitempty"`
-    PriceUnit      string      `json:"priceUnit,omitempty"`
-    PostalCode     string      `json:"postalCode,omitempty"`
-    VariableWeight bool        `json:"variableWeight"`
-    Available      bool        `json:"available"`
-    Promotions     []Promotion `json:"promotions,omitempty"`
-    ObservedAt     time.Time   `json:"observedAt"`
+    ID                   string      `json:"id"`
+    SupermarketID        string      `json:"supermarketId"`
+    ExternalID           string      `json:"externalId"`
+    Name                 string      `json:"name"`
+    Brand                string      `json:"brand,omitempty"`
+    PackageAmount        float64     `json:"packageAmount,omitempty"`
+    PackageUnit          string      `json:"packageUnit,omitempty"`
+    Price                float64     `json:"price"`
+    PricePerUnit         float64     `json:"pricePerUnit,omitempty"`
+    PriceUnit            string      `json:"priceUnit,omitempty"`
+    PostalCode           string      `json:"postalCode,omitempty"`
+    VariableWeight       bool        `json:"variableWeight"`
+    Available            bool        `json:"available"`
+    Promotions           []Promotion `json:"promotions,omitempty"`
+    ObservedAt           time.Time   `json:"observedAt"`
+    SourceCategoryID     string      `json:"sourceCategoryId,omitempty"`
+    SourceCategoryName   string      `json:"sourceCategoryName,omitempty"`
+    SourceCategoryPath   string      `json:"sourceCategoryPath,omitempty"`
+    ItemType             string      `json:"itemType,omitempty"`
+    NormalizedCategory   string      `json:"normalizedCategory,omitempty"`
+    RecipeCompatible     bool        `json:"recipeCompatible,omitempty"`
+    ClassificationStatus string      `json:"classificationStatus,omitempty"`
+    ClassificationScore  float64     `json:"classificationScore,omitempty"`
+    ClassificationSource string      `json:"classificationSource,omitempty"`
 }
 
 type SearchParams struct {
