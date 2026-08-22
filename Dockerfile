@@ -7,7 +7,8 @@ COPY internal ./internal
 COPY migrations ./migrations
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/prices-api ./cmd/api \
     && CGO_ENABLED=0 GOOS=linux go build -o /out/prices-migrate ./cmd/migrate \
-    && CGO_ENABLED=0 GOOS=linux go build -o /out/import-prices ./cmd/import-prices
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/import-prices ./cmd/import-prices \
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/dia-product-probe ./cmd/dia-product-probe
 
 FROM alpine:3.21
 RUN adduser -D -H appuser
@@ -15,5 +16,6 @@ USER appuser
 COPY --from=build /out/prices-api /usr/local/bin/prices-api
 COPY --from=build /out/prices-migrate /usr/local/bin/prices-migrate
 COPY --from=build /out/import-prices /usr/local/bin/import-prices
+COPY --from=build /out/dia-product-probe /usr/local/bin/dia-product-probe
 EXPOSE 8080
 CMD ["prices-api"]
