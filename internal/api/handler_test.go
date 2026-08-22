@@ -73,3 +73,51 @@ func TestSearchReturnsMatchingProduct(t *testing.T) {
         t.Fatalf("expected 3 MVP demo products, got %d", body.Count)
     }
 }
+
+func TestSearchReturnsClassificationMetadata(t *testing.T) {
+    store := catalog.NewMemoryStore([]catalog.Product{
+        {
+            ID:                   "dia-28809",
+            SupermarketID:        "dia",
+            ExternalID:           "28809",
+            Name:                 "Arroz vaporizado Dia Arrozona 1 Kg",
+            PostalCode:           "28001",
+            SourceCategoryID:     "L106",
+            SourceCategoryName:   "Arroz pastas y legumbres",
+            SourceCategoryPath:   "arroz-pastas-y-legumbres/c/L106",
+            ItemType:             "food_ingredient",
+            NormalizedCategory:   "food.pantry.cereal.rice",
+            RecipeCompatible:     true,
+            ClassificationStatus: "classified",
+            ClassificationScore:  0.98,
+            ClassificationSource: "rules:v1",
+        },
+    })
+    h := NewHandler(store)
+    req := httptest.NewRequest(http.MethodGet, "/api/v1/products/search?q=vaporizado&postalCode=28001", nil)
+    rec := httptest.NewRecorder()
+
+    h.Routes().ServeHTTP(rec, req)
+
+    if rec.Code != http.StatusOK {
+        t.Fatalf("expected 200, got %d", rec.Code)
+    }
+
+    var body struct {
+        Items []catalog.Product `json:"items"`
+    }
+    if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+        t.Fatal(err)
+    }
+    if len(body.Items) != 1 {
+        t.Fatalf("expected 1 product, got %d", len(body.Items))
+    }
+
+    got := body.Items[0]
+    if got.SourceCategoryID != "L106" || got.ItemType != "food_ingredient" || !got.RecipeCompatible {
+        t.Fatalf("classification metadata missing from JSON: %#v", got)
+    }
+    if got.NormalizedCategory != "food.pantry.cereal.rice" || got.ClassificationSource != "rules:v1" {
+        t.Fatalf("unexpected classification metadata: %#v", got)
+    }
+}
