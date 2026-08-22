@@ -13,30 +13,30 @@ import (
 )
 
 type NutritionFacts struct {
-    BasisAmount       float64 `json:"basisAmount,omitempty"`
-    BasisUnit         string  `json:"basisUnit,omitempty"`
-    EnergyKJ          float64 `json:"energyKJ,omitempty"`
-    EnergyKcal        float64 `json:"energyKcal,omitempty"`
-    FatG              float64 `json:"fatG,omitempty"`
-    SaturatedFatG     float64 `json:"saturatedFatG,omitempty"`
-    CarbohydratesG    float64 `json:"carbohydratesG,omitempty"`
-    SugarsG           float64 `json:"sugarsG,omitempty"`
-    FiberG            float64 `json:"fiberG,omitempty"`
-    ProteinG          float64 `json:"proteinG,omitempty"`
-    SaltG             float64 `json:"saltG,omitempty"`
+    BasisAmount    *float64 `json:"basisAmount,omitempty"`
+    BasisUnit      string   `json:"basisUnit,omitempty"`
+    EnergyKJ       *float64 `json:"energyKJ,omitempty"`
+    EnergyKcal     *float64 `json:"energyKcal,omitempty"`
+    FatG           *float64 `json:"fatG,omitempty"`
+    SaturatedFatG  *float64 `json:"saturatedFatG,omitempty"`
+    CarbohydratesG *float64 `json:"carbohydratesG,omitempty"`
+    SugarsG        *float64 `json:"sugarsG,omitempty"`
+    FiberG         *float64 `json:"fiberG,omitempty"`
+    ProteinG       *float64 `json:"proteinG,omitempty"`
+    SaltG          *float64 `json:"saltG,omitempty"`
 }
 
 type ProductDetails struct {
-    ExternalID            string          `json:"externalId,omitempty"`
-    Name                  string          `json:"name,omitempty"`
-    EAN                   string          `json:"ean,omitempty"`
-    SourceURL             string          `json:"sourceUrl"`
-    DescriptionText       string          `json:"descriptionText,omitempty"`
-    SourceIngredientsBlock string         `json:"sourceIngredientsBlock,omitempty"`
-    IngredientsText       string          `json:"ingredientsText,omitempty"`
-    ResponsibleText       string          `json:"responsibleText,omitempty"`
-    NutritionSource       string          `json:"nutritionSource,omitempty"`
-    Nutrition             *NutritionFacts `json:"nutrition,omitempty"`
+    ExternalID             string          `json:"externalId,omitempty"`
+    Name                   string          `json:"name,omitempty"`
+    EAN                    string          `json:"ean,omitempty"`
+    SourceURL              string          `json:"sourceUrl"`
+    DescriptionText        string          `json:"descriptionText,omitempty"`
+    SourceIngredientsBlock string          `json:"sourceIngredientsBlock,omitempty"`
+    IngredientsText        string          `json:"ingredientsText,omitempty"`
+    ResponsibleText        string          `json:"responsibleText,omitempty"`
+    NutritionSource        string          `json:"nutritionSource,omitempty"`
+    Nutrition              *NutritionFacts `json:"nutrition,omitempty"`
 }
 
 var (
@@ -113,7 +113,7 @@ func parseNutrition(lines []string) (NutritionFacts, bool) {
         normalized := normalizeDetailLabel(line)
         if match := basisRE.FindStringSubmatch(normalized); len(match) == 3 {
             if value, err := strconv.ParseFloat(strings.ReplaceAll(match[1], ",", "."), 64); err == nil {
-                facts.BasisAmount = value
+                facts.BasisAmount = float64Pointer(value)
                 facts.BasisUnit = strings.ToLower(match[2])
                 found = true
             }
@@ -127,10 +127,10 @@ func parseNutrition(lines []string) (NutritionFacts, bool) {
                     continue
                 }
                 if unit == "kj" {
-                    facts.EnergyKJ = value
+                    facts.EnergyKJ = float64Pointer(value)
                     found = true
                 } else if unit == "kcal" {
-                    facts.EnergyKcal = value
+                    facts.EnergyKcal = float64Pointer(value)
                     found = true
                 }
             }
@@ -154,14 +154,18 @@ func parseNutrition(lines []string) (NutritionFacts, bool) {
     return facts, found
 }
 
-func nextGramValue(lines []string, index int, current float64, found bool) (float64, bool) {
+func nextGramValue(lines []string, index int, current *float64, found bool) (*float64, bool) {
     for j := index + 1; j < len(lines) && j <= index+3; j++ {
         value, unit, ok := parseNumberUnit(lines[j])
         if ok && unit == "g" {
-            return value, true
+            return float64Pointer(value), true
         }
     }
     return current, found
+}
+
+func float64Pointer(value float64) *float64 {
+    return &value
 }
 
 func parseNumberUnit(value string) (float64, string, bool) {
