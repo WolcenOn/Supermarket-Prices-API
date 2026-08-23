@@ -61,6 +61,56 @@ func TestClassifyUsesSourceTaxonomyBeforeCanonicalMatching(t *testing.T) {
             wantStatus:   "classified",
         },
         {
+            name: "dia milk is a recipe ingredient",
+            product: catalog.Product{
+                Name:               "Leche semidesnatada Dia Láctea 1 L",
+                SourceCategoryID:   "L2051",
+                SourceCategoryName: "Leche",
+                SourceCategoryPath: "huevos-leche-y-mantequilla/leche/c/L2051",
+            },
+            wantType:     "food_ingredient",
+            wantCategory: "food.dairy.milk",
+            wantRecipe:   true,
+            wantStatus:   "classified",
+        },
+        {
+            name: "pasteurized dia milk stays a recipe ingredient",
+            product: catalog.Product{
+                Name:               "Leche entera pasteurizada Dia Láctea 1 L",
+                SourceCategoryID:   "L2051",
+                SourceCategoryName: "Leche",
+                SourceCategoryPath: "huevos-leche-y-mantequilla/leche/c/L2051",
+            },
+            wantType:     "food_ingredient",
+            wantCategory: "food.dairy.milk",
+            wantRecipe:   true,
+            wantStatus:   "classified",
+        },
+        {
+            name: "milk mention outside milk taxonomy is not enough",
+            product: catalog.Product{
+                Name:               "Chocolate con leche 100 g",
+                SourceCategoryName: "Chocolate",
+            },
+            wantType:     "other",
+            wantCategory: "",
+            wantRecipe:   false,
+            wantStatus:   "pending",
+        },
+        {
+            name: "milk-category shake remains beverage",
+            product: catalog.Product{
+                Name:               "Batido de leche y cacao 1 L",
+                SourceCategoryID:   "L2051",
+                SourceCategoryName: "Leche",
+                SourceCategoryPath: "huevos-leche-y-mantequilla/leche/c/L2051",
+            },
+            wantType:     "beverage",
+            wantCategory: "beverage",
+            wantRecipe:   false,
+            wantStatus:   "classified",
+        },
+        {
             name: "beverage",
             product: catalog.Product{
                 Name:               "Agua mineral 1,5 L",
