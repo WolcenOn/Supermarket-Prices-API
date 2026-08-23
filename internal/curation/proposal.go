@@ -1,0 +1,243 @@
+package curation
+
+import (
+	"context"
+	"fmt"
+	"strings"
+)
+
+const (
+	SchemaVersionV1 = "canonical-curation:v1"
+	PolicyVersionV1 = "canonical-curation-policy:v1"
+
+	ActionProposeAlias = "propose_alias"
+	ActionAbstain      = "abstain"
+
+	VerdictAccepted    = "accepted_for_suggestion"
+	VerdictNeedsReview = "needs_review"
+	VerdictRejected    = "rejected"
+)
+
+var allowedEvidenceTypes = map[string]struct{}{
+	"supermarket_product": {},
+	"source_taxonomy":     {},
+	"pack":                {},
+	"manual":              {},
+	"rule":                {},
+	"other":               {},
+}
+
+type Proposal struct {
+	SchemaVersion         string     `json:"schemaVersion"`
+	PolicyVersion         string     `json:"policyVersion"`
+	Action                string     `json:"action"`
+	Alias                 string     `json:"alias,omitempty"`
+	CanonicalIngredientID string     `json:"canonicalIngredientId,omitempty"`
+	Confidence            float64    `json:"confidence"`
+	Reasons               []string   `json:"reasons,omitempty"`
+	Conflicts             []string   `json:"conflicts,omitempty"`
+	Evidence              []Evidence `json:"evidence,omitempty"`
+	Agent                  AgentInfo  `json:"agent,omitempty"`
+}
+
+type AgentInfo struct {
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+	RunID    string `json:"runId,omitempty"`
+}
+
+type Evidence struct {
+	Type                 string `json:"type"`
+	SupermarketProductID string `json:"supermarketProductId,omitempty"`
+	SourceRef            string `json:"sourceRef,omitempty"`
+	SourceText           string `json:"sourceText,omitempty"`
+}
+
+type AliasContext struct {
+	CanonicalIngredientID string `json:"canonicalIngredientId"`
+	CanonicalName         string `json:"canonicalName"`
+	AlreadyCanonical      bool   `json:"alreadyCanonical"`
+	ExistingStatus        string `json:"existingStatus,omitempty"`
+	VerifiedConflictID    string `json:"verifiedConflictId,omitempty"`
+}
+
+type AliasContextLookup interface {
+	CurationAliasContext(ctx context.Context, canonicalIngredientID, alias string) (AliasContext, error)
+}
+
+type ProductEvidence struct {
+	ID                   string `json:"id"`
+	Name                 string `json:"name"`
+	ItemType             string `json:"itemType"`
+	NormalizedCategory   string `json:"normalizedCategory"`
+	RecipeCompatible     bool   `json:"recipeCompatible"`
+	ClassificationStatus string `json:"classificationStatus"`
+	ClassificationSource string `json:"classificationSource"`
+}
+
+type ProductEvidenceLookup interface {
+	CurationProductEvidence(ctx context.Context, productID string) (ProductEvidence, bool, error)
+}
+
+type Lookup interface {
+	AliasContextLookup
+	ProductEvidenceLookup
+}
+
+type Verdict struct {
+	Status            string            `json:"status"`
+	PolicyVersion     string            `json:"policyVersion"`
+	EligibleToSuggest bool              `json:"eligibleToSuggest"`
+	Vetoes            []string          `json:"vetoes"`
+	Warnings          []string          `json:"warnings"`
+	AliasContext      *AliasContext     `json:"aliasContext,omitempty"`
+	CheckedProducts   []ProductEvidence `json:"checkedProducts,omitempty"`
+}
+
+func Verify(ctx context.Context, proposal Proposal, lookup Lookup) (Verdict, error) {
+	verdict := Verdict{
+		Status:        VerdictRejected,
+		PolicyVersion: PolicyVersionV1,
+		Vetoes:        []string{},
+		Warnings:      []string{},
+	}
+
+	proposal.SchemaVersion = strings.TrimSpace(proposal.SchemaVersion)
+	proposal.PolicyVersion = strings.TrimSpace(proposal.PolicyVersion)
+	proposal.Action = strings.TrimSpace(strings.ToLower(proposal.Action))
+	proposal.Alias = strings.TrimSpace(proposal.Alias)
+	proposal.CanonicalIngredientID = strings.TrimSpace(proposal.CanonicalIngredientID)
+
+	if proposal.SchemaVersion != SchemaVersionV1 {
+		verdict.Vetoes = append(verdict.Vetoes, "unsupported_schema_version")
+	}
+	if proposal.PolicyVersion != PolicyVersionV1 {
+		verdict.Vetoes = append(verdict.Vetoes, "unsupported_policy_version")
+	}
+
+	if proposal.Action == ActionAbstain {
+		if len(verdict.Vetoes) > 0 {
+			return verdict, nil
+		}
+		verdict.Status = VerdictNeedsReview
+		verdict.Warnings = append(verdict.Warnings, "agent_abstained")
+		return verdict, nil
+	}
+	if proposal.Action != ActionProposeAlias {
+		verdict.Vetoes = append(verdict.Vetoes, "unsupported_action")
+	}
+	if proposal.Alias == "" {
+		verdict.Vetoes = append(verdict.Vetoes, "missing_alias")
+	}
+	if proposal.CanonicalIngredientID == "" {
+		verdict.Vetoes = append(verdict.Vetoes, "missing_canonical_ingredient_id")
+	}
+	if proposal.Confidence <= 0 || proposal.Confidence > 1 {
+		verdict.Vetoes = append(verdict.Vetoes, "invalid_confidence")
+	}
+	if len(nonEmpty(proposal.Reasons)) == 0 {
+		verdict.Warnings = append(verdict.Warnings, "missing_reasons")
+	}
+	if len(nonEmpty(proposal.Conflicts)) > 0 {
+		verdict.Warnings = append(verdict.Warnings, "agent_reported_conflicts")
+	}
+	if len(proposal.Evidence) == 0 {
+		verdict.Warnings = append(verdict.Warnings, "missing_evidence")
+	}
+
+	for _, evidence := range proposal.Evidence {
+		evidenceType := strings.TrimSpace(evidence.Type)
+		if _, ok := allowedEvidenceTypes[evidenceType]; !ok {
+			verdict.Vetoes = append(verdict.Vetoes, "unsupported_evidence_type:"+evidenceType)
+			continue
+		}
+		if evidenceType == "supermarket_product" {
+			if strings.TrimSpace(evidence.SupermarketProductID) == "" {
+				verdict.Vetoes = append(verdict.Vetoes, "supermarket_product_evidence_missing_product_id")
+			}
+			continue
+		}
+		if strings.TrimSpace(evidence.SourceRef) == "" && strings.TrimSpace(evidence.SourceText) == "" {
+			verdict.Vetoes = append(verdict.Vetoes, "evidence_missing_source:"+evidenceType)
+		}
+	}
+
+	if len(verdict.Vetoes) > 0 {
+		return verdict, nil
+	}
+	if lookup == nil {
+		return Verdict{}, fmt.Errorf("curation: deterministic lookup is required")
+	}
+
+	aliasContext, err := lookup.CurationAliasContext(ctx, proposal.CanonicalIngredientID, proposal.Alias)
+	if err != nil {
+		return Verdict{}, fmt.Errorf("curation: load alias context: %w", err)
+	}
+	verdict.AliasContext = &aliasContext
+	if aliasContext.AlreadyCanonical {
+		verdict.Vetoes = append(verdict.Vetoes, "alias_already_canonical")
+	}
+	if aliasContext.VerifiedConflictID != "" {
+		verdict.Vetoes = append(verdict.Vetoes, "verified_alias_conflict:"+aliasContext.VerifiedConflictID)
+	}
+	switch aliasContext.ExistingStatus {
+	case "verified":
+		verdict.Vetoes = append(verdict.Vetoes, "alias_already_verified")
+	case "rejected":
+		verdict.Vetoes = append(verdict.Vetoes, "alias_previously_rejected")
+	}
+
+	for _, evidence := range proposal.Evidence {
+		if strings.TrimSpace(evidence.Type) != "supermarket_product" {
+			continue
+		}
+		productID := strings.TrimSpace(evidence.SupermarketProductID)
+		product, found, err := lookup.CurationProductEvidence(ctx, productID)
+		if err != nil {
+			return Verdict{}, fmt.Errorf("curation: load product evidence %s: %w", productID, err)
+		}
+		if !found {
+			verdict.Warnings = append(verdict.Warnings, "product_evidence_not_found:"+productID)
+			continue
+		}
+		verdict.CheckedProducts = append(verdict.CheckedProducts, product)
+
+		if product.ClassificationStatus != "classified" {
+			verdict.Warnings = append(verdict.Warnings, "product_not_classified:"+productID)
+			continue
+		}
+		if product.ItemType != "food_ingredient" || !product.RecipeCompatible {
+			verdict.Vetoes = append(verdict.Vetoes, "product_not_recipe_compatible:"+productID)
+		}
+	}
+
+	if len(verdict.Vetoes) > 0 {
+		verdict.Status = VerdictRejected
+		return verdict, nil
+	}
+
+	if proposal.Confidence < 0.90 || len(nonEmpty(proposal.Conflicts)) > 0 || len(proposal.Evidence) == 0 || len(nonEmpty(proposal.Reasons)) == 0 {
+		verdict.Status = VerdictNeedsReview
+		return verdict, nil
+	}
+	for _, warning := range verdict.Warnings {
+		if strings.HasPrefix(warning, "product_evidence_not_found:") || strings.HasPrefix(warning, "product_not_classified:") {
+			verdict.Status = VerdictNeedsReview
+			return verdict, nil
+		}
+	}
+
+	verdict.Status = VerdictAccepted
+	verdict.EligibleToSuggest = true
+	return verdict, nil
+}
+
+func nonEmpty(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			out = append(out, strings.TrimSpace(value))
+		}
+	}
+	return out
+}
