@@ -38,6 +38,7 @@ func (h *Handler) Routes() http.Handler {
     mux.HandleFunc("GET /api/v1/products/{id}/nutrition", h.productNutrition)
     mux.HandleFunc("GET /api/v1/ingredients", h.ingredients)
     mux.HandleFunc("GET /api/v1/ingredients/search", h.searchIngredients)
+    mux.HandleFunc("GET /api/v1/ingredients/resolve", h.resolveCanonicalIngredient)
     mux.HandleFunc("GET /api/v1/ingredients/{id}/products", h.ingredientProducts)
     mux.HandleFunc("GET /api/v1/ingredients/{id}/quote", h.ingredientQuote)
     return withPublicReadCORS(mux)
@@ -279,7 +280,7 @@ func (h *Handler) requireNutritionStore(w http.ResponseWriter) bool {
     return false
 }
 
-func writeStoreError(w http.ResponseWriter) {
+func writeStoreError(w http.ResponseWriter, ) {
     writeJSON(w, http.StatusInternalServerError, map[string]any{
         "error": "catalog_unavailable",
         "message": "catalog data is temporarily unavailable",
