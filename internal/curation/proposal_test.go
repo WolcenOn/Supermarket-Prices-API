@@ -5,10 +5,22 @@ import (
 	"testing"
 )
 
-type fakeProductLookup map[string]ProductEvidence
+type fakeLookup struct {
+	alias    AliasContext
+	products map[string]ProductEvidence
+}
 
-func (f fakeProductLookup) CurationProductEvidence(_ context.Context, productID string) (ProductEvidence, bool, error) {
-	product, ok := f[productID]
+func (f fakeLookup) CurationAliasContext(_ context.Context, canonicalIngredientID, _ string) (AliasContext, error) {
+	result := f.alias
+	if result.CanonicalIngredientID == "" {
+		result.CanonicalIngredientID = canonicalIngredientID
+		result.CanonicalName = "Arroz redondo"
+	}
+	return result, nil
+}
+
+func (f fakeLookup) CurationProductEvidence(_ context.Context, productID string) (ProductEvidence, bool, error) {
+	product, ok := f.products[productID]
 	return product, ok, nil
 }
 
@@ -28,9 +40,8 @@ func baseProposal() Proposal {
 	}
 }
 
-func TestVerifyAcceptsHighConfidenceCompatibleProposalForSuggestion(t *testing.T) {
-	proposal := baseProposal()
-	lookup := fakeProductLookup{
+func rawRiceLookup() fakeLookup {
+	return fakeLookup{products: map[string]ProductEvidence{
 		"raw-rice": {
 			ID:                   "raw-rice",
 			Name:                 "Arroz redondo 1 kg",
@@ -40,9 +51,11 @@ func TestVerifyAcceptsHighConfidenceCompatibleProposalForSuggestion(t *testing.T
 			ClassificationStatus: "classified",
 			ClassificationSource: "rules:v1",
 		},
-	}
+	}}
+}
 
-	verdict, err := Verify(context.Background(), proposal, lookup)
+func TestVerifyAcceptsHighConfidenceCompatibleProposalForSuggestion(t *testing.T) {
+	verdict, err := Verify(context.Background(), baseProposal(), rawRiceLookup())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +69,7 @@ func TestVerifyVetoesPreparedFoodEvenWhenAgentIsConfident(t *testing.T) {
 	proposal.Alias = "Arroz tres delicias"
 	proposal.Confidence = 0.99
 	proposal.Evidence[0].SupermarketProductID = "prepared-rice"
-	lookup := fakeProductLookup{
+	lookup := fakeLookup{products: map[string]ProductEvidence{
 		"prepared-rice": {
 			ID:                   "prepared-rice",
 			Name:                 "Arroz tres delicias",
@@ -66,7 +79,7 @@ func TestVerifyVetoesPreparedFoodEvenWhenAgentIsConfident(t *testing.T) {
 			ClassificationStatus: "classified",
 			ClassificationSource: "rules:v1",
 		},
-	}
+	}}
 
 	verdict, err := Verify(context.Background(), proposal, lookup)
 	if err != nil {
@@ -83,16 +96,8 @@ func TestVerifyVetoesPreparedFoodEvenWhenAgentIsConfident(t *testing.T) {
 func TestVerifySendsAmbiguousOrWeakProposalToReview(t *testing.T) {
 	proposal := baseProposal()
 	proposal.Confidence = 0.82
-	lookup := fakeProductLookup{
-		"raw-rice": {
-			ID:                   "raw-rice",
-			ItemType:             "food_ingredient",
-			RecipeCompatible:     true,
-			ClassificationStatus: "classified",
-		},
-	}
 
-	verdict, err := Verify(context.Background(), proposal, lookup)
+	verdict, err := Verify(context.Background(), proposal, rawRiceLookup())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,21 +109,39 @@ func TestVerifySendsAmbiguousOrWeakProposalToReview(t *testing.T) {
 func TestVerifyDoesNotAutoAcceptAgentReportedConflict(t *testing.T) {
 	proposal := baseProposal()
 	proposal.Conflicts = []string{"podría confundirse con arroz largo"}
-	lookup := fakeProductLookup{
-		"raw-rice": {
-			ID:                   "raw-rice",
-			ItemType:             "food_ingredient",
-			RecipeCompatible:     true,
-			ClassificationStatus: "classified",
-		},
-	}
 
-	verdict, err := Verify(context.Background(), proposal, lookup)
+	verdict, err := Verify(context.Background(), proposal, rawRiceLookup())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if verdict.Status != VerdictNeedsReview || verdict.EligibleToSuggest {
 		t.Fatalf("expected needs_review, got %+v", verdict)
+	}
+}
+
+func TestVerifyVetoesExistingVerifiedAliasConflict(t *testing.T) {
+	lookup := rawRiceLookup()
+	lookup.alias.VerifiedConflictID = "arroz_largo"
+
+	verdict, err := Verify(context.Background(), baseProposal(), lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verdict.Status != VerdictRejected || verdict.EligibleToSuggest {
+		t.Fatalf("expected rejection, got %+v", verdict)
+	}
+}
+
+func TestVerifyVetoesPreviouslyRejectedAlias(t *testing.T) {
+	lookup := rawRiceLookup()
+	lookup.alias.ExistingStatus = "rejected"
+
+	verdict, err := Verify(context.Background(), baseProposal(), lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verdict.Status != VerdictRejected || verdict.EligibleToSuggest {
+		t.Fatalf("expected rejection, got %+v", verdict)
 	}
 }
 
