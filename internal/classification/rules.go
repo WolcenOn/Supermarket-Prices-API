@@ -97,6 +97,10 @@ func Classify(product catalog.Product) Result {
         return classified("beverage", "beverage", false, 0.96)
     }
 
+    if isMilkSourceCategory(product) && strings.Contains(name, "leche") {
+        return classified("food_ingredient", "food.dairy.milk", true, 0.99)
+    }
+
     if strings.Contains(name, "arroz") && (strings.Contains(sourceCategory, "arroz") || containsAny(name, knownRiceTerms)) {
         return classified("food_ingredient", "food.pantry.cereal.rice", true, 0.98)
     }
@@ -138,6 +142,16 @@ func classified(itemType, category string, recipeCompatible bool, score float64)
         Score:              score,
         Source:             SourceRulesV1,
     }
+}
+
+func isMilkSourceCategory(product catalog.Product) bool {
+    categoryID := normalize(product.SourceCategoryID)
+    categoryName := normalize(product.SourceCategoryName)
+    categoryPath := normalize(product.SourceCategoryPath)
+
+    return categoryID == "l2051" ||
+        categoryName == "leche" ||
+        strings.Contains(categoryPath, "leche c l2051")
 }
 
 func containsAny(value string, terms []string) bool {
