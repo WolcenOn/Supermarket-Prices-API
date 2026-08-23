@@ -18,6 +18,15 @@ const (
 	VerdictRejected    = "rejected"
 )
 
+var allowedEvidenceTypes = map[string]struct{}{
+	"supermarket_product": {},
+	"source_taxonomy":     {},
+	"pack":                {},
+	"manual":              {},
+	"rule":                {},
+	"other":               {},
+}
+
 type Proposal struct {
 	SchemaVersion         string     `json:"schemaVersion"`
 	PolicyVersion         string     `json:"policyVersion"`
@@ -107,6 +116,9 @@ func Verify(ctx context.Context, proposal Proposal, lookup Lookup) (Verdict, err
 	}
 
 	if proposal.Action == ActionAbstain {
+		if len(verdict.Vetoes) > 0 {
+			return verdict, nil
+		}
 		verdict.Status = VerdictNeedsReview
 		verdict.Warnings = append(verdict.Warnings, "agent_abstained")
 		return verdict, nil
@@ -131,6 +143,23 @@ func Verify(ctx context.Context, proposal Proposal, lookup Lookup) (Verdict, err
 	}
 	if len(proposal.Evidence) == 0 {
 		verdict.Warnings = append(verdict.Warnings, "missing_evidence")
+	}
+
+	for _, evidence := range proposal.Evidence {
+		evidenceType := strings.TrimSpace(evidence.Type)
+		if _, ok := allowedEvidenceTypes[evidenceType]; !ok {
+			verdict.Vetoes = append(verdict.Vetoes, "unsupported_evidence_type:"+evidenceType)
+			continue
+		}
+		if evidenceType == "supermarket_product" {
+			if strings.TrimSpace(evidence.SupermarketProductID) == "" {
+				verdict.Vetoes = append(verdict.Vetoes, "supermarket_product_evidence_missing_product_id")
+			}
+			continue
+		}
+		if strings.TrimSpace(evidence.SourceRef) == "" && strings.TrimSpace(evidence.SourceText) == "" {
+			verdict.Vetoes = append(verdict.Vetoes, "evidence_missing_source:"+evidenceType)
+		}
 	}
 
 	if len(verdict.Vetoes) > 0 {
@@ -159,15 +188,10 @@ func Verify(ctx context.Context, proposal Proposal, lookup Lookup) (Verdict, err
 	}
 
 	for _, evidence := range proposal.Evidence {
-		evidence.Type = strings.TrimSpace(evidence.Type)
+		if strings.TrimSpace(evidence.Type) != "supermarket_product" {
+			continue
+		}
 		productID := strings.TrimSpace(evidence.SupermarketProductID)
-		if evidence.Type != "supermarket_product" {
-			continue
-		}
-		if productID == "" {
-			verdict.Vetoes = append(verdict.Vetoes, "supermarket_product_evidence_missing_product_id")
-			continue
-		}
 		product, found, err := lookup.CurationProductEvidence(ctx, productID)
 		if err != nil {
 			return Verdict{}, fmt.Errorf("curation: load product evidence %s: %w", productID, err)
