@@ -20,6 +20,17 @@ type DIAEnrichmentCandidate struct {
     AlreadyHasNutrition bool   `json:"alreadyHasNutrition"`
 }
 
+// DIAEnrichmentDiagnostics reports mutually exclusive reasons why imported DIA
+// products are or are not selectable for nutrition enrichment. It is read-only
+// and deliberately mirrors the candidate selector's eligibility rules.
+type DIAEnrichmentDiagnostics struct {
+    TotalProducts       int `json:"totalProducts"`
+    MissingSourceURL    int `json:"missingSourceUrl"`
+    IneligibleItemType  int `json:"ineligibleItemType"`
+    AlreadyHasNutrition int `json:"alreadyHasNutrition"`
+    Selectable          int `json:"selectable"`
+}
+
 // DIAEnrichmentCandidates returns a bounded, deterministic set of existing
 // products. It never invents a product URL and excludes non-food grocery types.
 func DIAEnrichmentCandidates(ctx context.Context, db *sql.DB, limit int, includeExisting bool) ([]DIAEnrichmentCandidate, error) {
@@ -85,6 +96,61 @@ func DIAEnrichmentCandidates(ctx context.Context, db *sql.DB, limit int, include
     }
     if err := rows.Err(); err != nil {
         return nil, fmt.Errorf("postgres dia enrichment: rows: %w", err)
+    }
+    return out, nil
+}
+
+// DIAEnrichmentSelectionDiagnostics counts every imported DIA product exactly
+// once: missing URL, URL present but ineligible type, eligible but already
+// enriched, or currently selectable. This makes an empty candidate set
+// explainable without fetching any supermarket product pages.
+func DIAEnrichmentSelectionDiagnostics(ctx context.Context, db *sql.DB) (DIAEnrichmentDiagnostics, error) {
+    if db == nil {
+        return DIAEnrichmentDiagnostics{}, fmt.Errorf("postgres dia enrichment diagnostics: database is required")
+    }
+
+    var out DIAEnrichmentDiagnostics
+    err := db.QueryRowContext(ctx, `
+        SELECT
+            COUNT(*)::int,
+            COUNT(*) FILTER (
+                WHERE NULLIF(BTRIM(sp.source_url), '') IS NULL
+            )::int AS missing_source_url,
+            COUNT(*) FILTER (
+                WHERE NULLIF(BTRIM(sp.source_url), '') IS NOT NULL
+                  AND COALESCE(sp.item_type, '') NOT IN ('food_ingredient', 'prepared_food', 'beverage')
+            )::int AS ineligible_item_type,
+            COUNT(*) FILTER (
+                WHERE NULLIF(BTRIM(sp.source_url), '') IS NOT NULL
+                  AND COALESCE(sp.item_type, '') IN ('food_ingredient', 'prepared_food', 'beverage')
+                  AND EXISTS (
+                      SELECT 1
+                      FROM product_nutrition pn
+                      WHERE pn.supermarket_product_id = sp.id
+                        AND pn.source = $1
+                  )
+            )::int AS already_has_nutrition,
+            COUNT(*) FILTER (
+                WHERE NULLIF(BTRIM(sp.source_url), '') IS NOT NULL
+                  AND COALESCE(sp.item_type, '') IN ('food_ingredient', 'prepared_food', 'beverage')
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM product_nutrition pn
+                      WHERE pn.supermarket_product_id = sp.id
+                        AND pn.source = $1
+                  )
+            )::int AS selectable
+        FROM supermarket_products sp
+        WHERE sp.supermarket_id = 'dia'
+    `, diaNutritionSource).Scan(
+        &out.TotalProducts,
+        &out.MissingSourceURL,
+        &out.IneligibleItemType,
+        &out.AlreadyHasNutrition,
+        &out.Selectable,
+    )
+    if err != nil {
+        return DIAEnrichmentDiagnostics{}, fmt.Errorf("postgres dia enrichment diagnostics: %w", err)
     }
     return out, nil
 }

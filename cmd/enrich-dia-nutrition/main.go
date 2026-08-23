@@ -37,17 +37,18 @@ type itemResult struct {
 }
 
 type output struct {
-    Mode           string       `json:"mode"`
-    Limit          int          `json:"limit"`
-    Delay          string       `json:"delay"`
-    Refresh        bool         `json:"refresh"`
-    Selected       int          `json:"selected"`
-    Fetched        int          `json:"fetched"`
-    NutritionFound int          `json:"nutritionFound"`
-    Saved          int          `json:"saved"`
-    Skipped        int          `json:"skipped"`
-    Failed         int          `json:"failed"`
-    Items          []itemResult `json:"items"`
+    Mode           string                                  `json:"mode"`
+    Limit          int                                     `json:"limit"`
+    Delay          string                                  `json:"delay"`
+    Refresh        bool                                    `json:"refresh"`
+    Diagnostics    postgresstore.DIAEnrichmentDiagnostics `json:"diagnostics"`
+    Selected       int                                     `json:"selected"`
+    Fetched        int                                     `json:"fetched"`
+    NutritionFound int                                     `json:"nutritionFound"`
+    Saved          int                                     `json:"saved"`
+    Skipped        int                                     `json:"skipped"`
+    Failed         int                                     `json:"failed"`
+    Items          []itemResult                            `json:"items"`
 }
 
 func main() {
@@ -82,18 +83,24 @@ func main() {
         log.Fatalf("ping postgres: %v", err)
     }
 
+    diagnostics, err := postgresstore.DIAEnrichmentSelectionDiagnostics(ctx, db)
+    if err != nil {
+        log.Fatal(err)
+    }
+
     candidates, err := postgresstore.DIAEnrichmentCandidates(ctx, db, limit, *refresh)
     if err != nil {
         log.Fatal(err)
     }
 
     result := output{
-        Mode:     mode(*persist),
-        Limit:    limit,
-        Delay:    delay.String(),
-        Refresh:  *refresh,
-        Selected: len(candidates),
-        Items:    make([]itemResult, 0, len(candidates)),
+        Mode:        mode(*persist),
+        Limit:       limit,
+        Delay:       delay.String(),
+        Refresh:     *refresh,
+        Diagnostics: diagnostics,
+        Selected:    len(candidates),
+        Items:       make([]itemResult, 0, len(candidates)),
     }
 
     source := dia.NewHTTPSource(nil)
