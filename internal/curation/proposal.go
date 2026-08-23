@@ -13,9 +13,9 @@ const (
 	ActionProposeAlias = "propose_alias"
 	ActionAbstain      = "abstain"
 
-	VerdictAccepted   = "accepted_for_suggestion"
+	VerdictAccepted    = "accepted_for_suggestion"
 	VerdictNeedsReview = "needs_review"
-	VerdictRejected   = "rejected"
+	VerdictRejected    = "rejected"
 )
 
 type Proposal struct {
@@ -44,6 +44,18 @@ type Evidence struct {
 	SourceText           string `json:"sourceText,omitempty"`
 }
 
+type AliasContext struct {
+	CanonicalIngredientID string `json:"canonicalIngredientId"`
+	CanonicalName         string `json:"canonicalName"`
+	AlreadyCanonical      bool   `json:"alreadyCanonical"`
+	ExistingStatus        string `json:"existingStatus,omitempty"`
+	VerifiedConflictID    string `json:"verifiedConflictId,omitempty"`
+}
+
+type AliasContextLookup interface {
+	CurationAliasContext(ctx context.Context, canonicalIngredientID, alias string) (AliasContext, error)
+}
+
 type ProductEvidence struct {
 	ID                   string `json:"id"`
 	Name                 string `json:"name"`
@@ -58,16 +70,22 @@ type ProductEvidenceLookup interface {
 	CurationProductEvidence(ctx context.Context, productID string) (ProductEvidence, bool, error)
 }
 
+type Lookup interface {
+	AliasContextLookup
+	ProductEvidenceLookup
+}
+
 type Verdict struct {
 	Status            string            `json:"status"`
 	PolicyVersion     string            `json:"policyVersion"`
 	EligibleToSuggest bool              `json:"eligibleToSuggest"`
 	Vetoes            []string          `json:"vetoes"`
 	Warnings          []string          `json:"warnings"`
+	AliasContext      *AliasContext     `json:"aliasContext,omitempty"`
 	CheckedProducts   []ProductEvidence `json:"checkedProducts,omitempty"`
 }
 
-func Verify(ctx context.Context, proposal Proposal, products ProductEvidenceLookup) (Verdict, error) {
+func Verify(ctx context.Context, proposal Proposal, lookup Lookup) (Verdict, error) {
 	verdict := Verdict{
 		Status:        VerdictRejected,
 		PolicyVersion: PolicyVersionV1,
@@ -118,6 +136,27 @@ func Verify(ctx context.Context, proposal Proposal, products ProductEvidenceLook
 	if len(verdict.Vetoes) > 0 {
 		return verdict, nil
 	}
+	if lookup == nil {
+		return Verdict{}, fmt.Errorf("curation: deterministic lookup is required")
+	}
+
+	aliasContext, err := lookup.CurationAliasContext(ctx, proposal.CanonicalIngredientID, proposal.Alias)
+	if err != nil {
+		return Verdict{}, fmt.Errorf("curation: load alias context: %w", err)
+	}
+	verdict.AliasContext = &aliasContext
+	if aliasContext.AlreadyCanonical {
+		verdict.Vetoes = append(verdict.Vetoes, "alias_already_canonical")
+	}
+	if aliasContext.VerifiedConflictID != "" {
+		verdict.Vetoes = append(verdict.Vetoes, "verified_alias_conflict:"+aliasContext.VerifiedConflictID)
+	}
+	switch aliasContext.ExistingStatus {
+	case "verified":
+		verdict.Vetoes = append(verdict.Vetoes, "alias_already_verified")
+	case "rejected":
+		verdict.Vetoes = append(verdict.Vetoes, "alias_previously_rejected")
+	}
 
 	for _, evidence := range proposal.Evidence {
 		evidence.Type = strings.TrimSpace(evidence.Type)
@@ -129,10 +168,7 @@ func Verify(ctx context.Context, proposal Proposal, products ProductEvidenceLook
 			verdict.Vetoes = append(verdict.Vetoes, "supermarket_product_evidence_missing_product_id")
 			continue
 		}
-		if products == nil {
-			return Verdict{}, fmt.Errorf("curation: product evidence lookup is required")
-		}
-		product, found, err := products.CurationProductEvidence(ctx, productID)
+		product, found, err := lookup.CurationProductEvidence(ctx, productID)
 		if err != nil {
 			return Verdict{}, fmt.Errorf("curation: load product evidence %s: %w", productID, err)
 		}
