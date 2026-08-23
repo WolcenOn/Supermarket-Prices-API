@@ -11,7 +11,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/prices-api ./cmd/api \
     && CGO_ENABLED=0 GOOS=linux go build -o /out/dia-product-probe ./cmd/dia-product-probe \
     && CGO_ENABLED=0 GOOS=linux go build -o /out/enrich-dia-nutrition ./cmd/enrich-dia-nutrition \
     && CGO_ENABLED=0 GOOS=linux go build -o /out/propose-canonical-alias ./cmd/propose-canonical-alias \
-    && CGO_ENABLED=0 GOOS=linux go build -o /out/review-canonical-alias ./cmd/review-canonical-alias
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/review-canonical-alias ./cmd/review-canonical-alias \
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/validate-canonical-curation ./cmd/validate-canonical-curation
 
 FROM alpine:3.21
 RUN adduser -D -H appuser
@@ -23,5 +24,6 @@ COPY --from=build /out/dia-product-probe /usr/local/bin/dia-product-probe
 COPY --from=build /out/enrich-dia-nutrition /usr/local/bin/enrich-dia-nutrition
 COPY --from=build /out/propose-canonical-alias /usr/local/bin/propose-canonical-alias
 COPY --from=build /out/review-canonical-alias /usr/local/bin/review-canonical-alias
+COPY --from=build /out/validate-canonical-curation /usr/local/bin/validate-canonical-curation
 EXPOSE 8080
 CMD ["prices-api"]
