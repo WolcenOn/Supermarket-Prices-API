@@ -24,6 +24,7 @@ type CanonicalAliasProposalPreview struct {
 	CanonicalIngredient catalog.CanonicalIngredient  `json:"canonicalIngredient"`
 	Alias               string                       `json:"alias"`
 	NormalizedAlias     string                       `json:"normalizedAlias"`
+	AlreadyCanonical    bool                         `json:"alreadyCanonical"`
 	ExistingStatus      string                       `json:"existingStatus,omitempty"`
 	VerifiedConflict    *catalog.CanonicalIngredient `json:"verifiedConflict,omitempty"`
 }
@@ -66,6 +67,9 @@ func PreviewCanonicalAliasProposal(ctx context.Context, db *sql.DB, canonicalIng
 		}
 		return CanonicalAliasProposalPreview{}, fmt.Errorf("postgres canonical alias proposal: load canonical ingredient: %w", err)
 	}
+
+	preview.AlreadyCanonical = canonicaltext.NormalizeText(preview.CanonicalIngredient.Name) == normalizedAlias ||
+		canonicaltext.NormalizeText(preview.CanonicalIngredient.ID) == normalizedAlias
 
 	var existingStatus string
 	err := db.QueryRowContext(ctx, `
@@ -111,6 +115,13 @@ func SaveCanonicalAliasProposal(ctx context.Context, db *sql.DB, input Canonical
 	preview, err := PreviewCanonicalAliasProposal(ctx, db, input.CanonicalIngredientID, input.Alias)
 	if err != nil {
 		return SavedCanonicalAliasProposal{}, err
+	}
+	if preview.AlreadyCanonical {
+		return SavedCanonicalAliasProposal{}, fmt.Errorf(
+			"postgres canonical alias proposal: %q already resolves as canonical ingredient %s",
+			preview.Alias,
+			preview.CanonicalIngredient.ID,
+		)
 	}
 	if preview.VerifiedConflict != nil {
 		return SavedCanonicalAliasProposal{}, fmt.Errorf(
