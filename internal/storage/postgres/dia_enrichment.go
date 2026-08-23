@@ -34,6 +34,18 @@ type DIAEnrichmentDiagnostics struct {
 // DIAEnrichmentCandidates returns a bounded, deterministic set of existing
 // products. It never invents a product URL and excludes non-food grocery types.
 func DIAEnrichmentCandidates(ctx context.Context, db *sql.DB, limit int, includeExisting bool) ([]DIAEnrichmentCandidate, error) {
+    return diaEnrichmentCandidates(ctx, db, limit, includeExisting, nil)
+}
+
+// DIAEnrichmentCandidatesForExternalIDs applies the same eligibility rules but
+// restricts selection to an explicit set of already-known DIA SKUs. This is
+// used to make persistence replay-safe: a redeploy cannot advance to unrelated
+// products after the requested SKUs have already been enriched.
+func DIAEnrichmentCandidatesForExternalIDs(ctx context.Context, db *sql.DB, limit int, includeExisting bool, externalIDs []string) ([]DIAEnrichmentCandidate, error) {
+    return diaEnrichmentCandidates(ctx, db, limit, includeExisting, externalIDs)
+}
+
+func diaEnrichmentCandidates(ctx context.Context, db *sql.DB, limit int, includeExisting bool, externalIDs []string) ([]DIAEnrichmentCandidate, error) {
     if db == nil {
         return nil, fmt.Errorf("postgres dia enrichment: database is required")
     }
@@ -43,6 +55,15 @@ func DIAEnrichmentCandidates(ctx context.Context, db *sql.DB, limit int, include
     if limit > 25 {
         limit = 25
     }
+
+    normalizedExternalIDs := make([]string, 0, len(externalIDs))
+    for _, externalID := range externalIDs {
+        externalID = strings.TrimSpace(externalID)
+        if externalID != "" {
+            normalizedExternalIDs = append(normalizedExternalIDs, externalID)
+        }
+    }
+    externalIDFilter := strings.Join(normalizedExternalIDs, ",")
 
     rows, err := db.QueryContext(ctx, `
         SELECT
@@ -70,9 +91,13 @@ func DIAEnrichmentCandidates(ctx context.Context, db *sql.DB, limit int, include
                     AND pn2.source = $1
               )
           )
+          AND (
+              $4::text = ''
+              OR sp.external_id = ANY(string_to_array($4::text, ','))
+          )
         ORDER BY sp.updated_at DESC, sp.external_id ASC
         LIMIT $3
-    `, diaNutritionSource, includeExisting, limit)
+    `, diaNutritionSource, includeExisting, limit, externalIDFilter)
     if err != nil {
         return nil, fmt.Errorf("postgres dia enrichment: list candidates: %w", err)
     }

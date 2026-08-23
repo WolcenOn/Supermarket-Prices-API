@@ -1,6 +1,7 @@
 package main
 
 import (
+    "reflect"
     "testing"
     "time"
 )
@@ -23,6 +24,39 @@ func TestBoundedDelay(t *testing.T) {
     }
     if got := boundedDelay(3 * time.Second); got != 3*time.Second {
         t.Fatalf("expected explicit safe delay, got %s", got)
+    }
+}
+
+func TestParseExternalIDs(t *testing.T) {
+    got, err := parseExternalIDs("151, 21415,151")
+    if err != nil {
+        t.Fatal(err)
+    }
+    want := []string{"151", "21415"}
+    if !reflect.DeepEqual(got, want) {
+        t.Fatalf("expected %#v, got %#v", want, got)
+    }
+
+    if _, err := parseExternalIDs("151,,21415"); err == nil {
+        t.Fatal("expected empty SKU to fail")
+    }
+    if _, err := parseExternalIDs("151,abc"); err == nil {
+        t.Fatal("expected non-numeric DIA SKU to fail")
+    }
+}
+
+func TestValidatePersistenceScope(t *testing.T) {
+    if err := validatePersistenceScope(false, nil, 5); err != nil {
+        t.Fatalf("preview without explicit SKUs should remain valid: %v", err)
+    }
+    if err := validatePersistenceScope(true, nil, 5); err == nil {
+        t.Fatal("persist without explicit reviewed SKUs must fail")
+    }
+    if err := validatePersistenceScope(true, []string{"151", "21415"}, 2); err != nil {
+        t.Fatalf("explicit reviewed persist scope should be valid: %v", err)
+    }
+    if err := validatePersistenceScope(true, []string{"151", "21415"}, 1); err == nil {
+        t.Fatal("persist scope larger than limit must fail")
     }
 }
 

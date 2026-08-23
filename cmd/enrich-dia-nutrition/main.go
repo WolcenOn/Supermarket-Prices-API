@@ -37,18 +37,19 @@ type itemResult struct {
 }
 
 type output struct {
-    Mode           string                                  `json:"mode"`
-    Limit          int                                     `json:"limit"`
-    Delay          string                                  `json:"delay"`
-    Refresh        bool                                    `json:"refresh"`
-    Diagnostics    postgresstore.DIAEnrichmentDiagnostics `json:"diagnostics"`
-    Selected       int                                     `json:"selected"`
-    Fetched        int                                     `json:"fetched"`
-    NutritionFound int                                     `json:"nutritionFound"`
-    Saved          int                                     `json:"saved"`
-    Skipped        int                                     `json:"skipped"`
-    Failed         int                                     `json:"failed"`
-    Items          []itemResult                            `json:"items"`
+    Mode                 string                                  `json:"mode"`
+    Limit                int                                     `json:"limit"`
+    Delay                string                                  `json:"delay"`
+    Refresh              bool                                    `json:"refresh"`
+    RequestedExternalIDs []string                                `json:"requestedExternalIds,omitempty"`
+    Diagnostics          postgresstore.DIAEnrichmentDiagnostics `json:"diagnostics"`
+    Selected             int                                     `json:"selected"`
+    Fetched              int                                     `json:"fetched"`
+    NutritionFound       int                                     `json:"nutritionFound"`
+    Saved                int                                     `json:"saved"`
+    Skipped              int                                     `json:"skipped"`
+    Failed               int                                     `json:"failed"`
+    Items                []itemResult                            `json:"items"`
 }
 
 func main() {
@@ -56,6 +57,7 @@ func main() {
     delayFlag := flag.Duration("delay", 2*time.Second, "pause between DIA product-page requests; minimum 1s")
     persist := flag.Bool("persist", false, "persist nutrition snapshots; preview-only by default")
     refresh := flag.Bool("refresh", false, "include products that already have DIA nutrition")
+    externalIDsFlag := flag.String("external-ids", "", "comma-separated DIA SKUs to inspect; required when --persist=true")
     timeout := flag.Duration("timeout", 2*time.Minute, "maximum batch execution time")
     flag.Parse()
 
@@ -64,6 +66,14 @@ func main() {
         log.Fatal(err)
     }
     delay := boundedDelay(*delayFlag)
+
+    externalIDs, err := parseExternalIDs(*externalIDsFlag)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if err := validatePersistenceScope(*persist, externalIDs, limit); err != nil {
+        log.Fatal(err)
+    }
 
     databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
     if databaseURL == "" {
@@ -88,19 +98,25 @@ func main() {
         log.Fatal(err)
     }
 
-    candidates, err := postgresstore.DIAEnrichmentCandidates(ctx, db, limit, *refresh)
+    var candidates []postgresstore.DIAEnrichmentCandidate
+    if len(externalIDs) > 0 {
+        candidates, err = postgresstore.DIAEnrichmentCandidatesForExternalIDs(ctx, db, limit, *refresh, externalIDs)
+    } else {
+        candidates, err = postgresstore.DIAEnrichmentCandidates(ctx, db, limit, *refresh)
+    }
     if err != nil {
         log.Fatal(err)
     }
 
     result := output{
-        Mode:        mode(*persist),
-        Limit:       limit,
-        Delay:       delay.String(),
-        Refresh:     *refresh,
-        Diagnostics: diagnostics,
-        Selected:    len(candidates),
-        Items:       make([]itemResult, 0, len(candidates)),
+        Mode:                 mode(*persist),
+        Limit:                limit,
+        Delay:                delay.String(),
+        Refresh:              *refresh,
+        RequestedExternalIDs: externalIDs,
+        Diagnostics:          diagnostics,
+        Selected:             len(candidates),
+        Items:                make([]itemResult, 0, len(candidates)),
     }
 
     source := dia.NewHTTPSource(nil)
@@ -189,6 +205,48 @@ func boundedDelay(value time.Duration) time.Duration {
         return minDelay
     }
     return value
+}
+
+func parseExternalIDs(raw string) ([]string, error) {
+    raw = strings.TrimSpace(raw)
+    if raw == "" {
+        return nil, nil
+    }
+
+    parts := strings.Split(raw, ",")
+    if len(parts) > maxLimit {
+        return nil, fmt.Errorf("--external-ids accepts at most %d DIA SKUs", maxLimit)
+    }
+
+    out := make([]string, 0, len(parts))
+    seen := make(map[string]struct{}, len(parts))
+    for _, part := range parts {
+        externalID := strings.TrimSpace(part)
+        if externalID == "" {
+            return nil, fmt.Errorf("--external-ids contains an empty DIA SKU")
+        }
+        for _, r := range externalID {
+            if r < '0' || r > '9' {
+                return nil, fmt.Errorf("invalid DIA SKU %q in --external-ids", externalID)
+            }
+        }
+        if _, exists := seen[externalID]; exists {
+            continue
+        }
+        seen[externalID] = struct{}{}
+        out = append(out, externalID)
+    }
+    return out, nil
+}
+
+func validatePersistenceScope(persist bool, externalIDs []string, limit int) error {
+    if persist && len(externalIDs) == 0 {
+        return fmt.Errorf("--persist=true requires explicit --external-ids from a reviewed preview")
+    }
+    if len(externalIDs) > limit {
+        return fmt.Errorf("--external-ids contains %d SKUs but --limit is %d", len(externalIDs), limit)
+    }
+    return nil
 }
 
 func sameExternalID(expected, actual string) bool {
