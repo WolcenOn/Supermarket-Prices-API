@@ -280,7 +280,7 @@ func (h *Handler) requireNutritionStore(w http.ResponseWriter) bool {
     return false
 }
 
-func writeStoreError(w http.ResponseWriter, ) {
+func writeStoreError(w http.ResponseWriter) {
     writeJSON(w, http.StatusInternalServerError, map[string]any{
         "error": "catalog_unavailable",
         "message": "catalog data is temporarily unavailable",
