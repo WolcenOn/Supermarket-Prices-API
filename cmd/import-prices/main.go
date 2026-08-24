@@ -54,11 +54,19 @@ func (s *matchingSink) SaveProducts(ctx context.Context, products []catalog.Prod
     return postgresstore.SaveIngredientMatches(ctx, s.db, matches)
 }
 
+func persistentImportSink(db *sql.DB, delegate importer.Sink, matchProducts bool) importer.Sink {
+    if !matchProducts {
+        return delegate
+    }
+    return &matchingSink{db: db, delegate: delegate}
+}
+
 func main() {
     supermarket := flag.String("supermarket", "dia", "supermarket provider to import")
     postalCode := flag.String("postal-code", "", "postal code used for location-sensitive observations")
     categories := flag.String("categories", "", "comma-separated DIA category URLs; defaults to a small validation set")
     dryRun := flag.Bool("dry-run", true, "fetch and normalize without persisting")
+    matchProducts := flag.Bool("match-products", true, "when persisting, also save deterministic product-to-canonical matches")
     timeout := flag.Duration("timeout", 45*time.Second, "maximum importer execution time")
     flag.Parse()
 
@@ -82,7 +90,7 @@ func main() {
         return
     }
 
-    runPersistent(ctx, provider, strings.TrimSpace(*postalCode))
+    runPersistent(ctx, provider, strings.TrimSpace(*postalCode), *matchProducts)
 }
 
 func runDry(ctx context.Context, provider importer.Provider, postalCode string) {
@@ -110,7 +118,7 @@ func runDry(ctx context.Context, provider importer.Provider, postalCode string) 
     }
 }
 
-func runPersistent(ctx context.Context, provider importer.Provider, postalCode string) {
+func runPersistent(ctx context.Context, provider importer.Provider, postalCode string, matchProducts bool) {
     databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
     if databaseURL == "" {
         log.Fatal("DATABASE_URL is required when --dry-run=false")
@@ -127,18 +135,20 @@ func runPersistent(ctx context.Context, provider importer.Provider, postalCode s
     }
 
     persistent := postgresstore.NewSink(db)
-    sink := &matchingSink{db: db, delegate: persistent}
+    sink := persistentImportSink(db, persistent, matchProducts)
     result, err := importer.Run(ctx, provider, sink, "catalog", postalCode)
     if err != nil {
         log.Fatal(err)
     }
 
     output := struct {
-        Mode   string          `json:"mode"`
-        Result importer.Result `json:"result"`
+        Mode          string          `json:"mode"`
+        MatchProducts bool            `json:"matchProducts"`
+        Result        importer.Result `json:"result"`
     }{
-        Mode:   "persist",
-        Result: result,
+        Mode:          "persist",
+        MatchProducts: matchProducts,
+        Result:        result,
     }
 
     encoder := json.NewEncoder(os.Stdout)
