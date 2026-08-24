@@ -34,7 +34,7 @@ func (f *stringListFlag) Set(value string) error {
 }
 
 type output struct {
-	Mode     string            `json:"mode"`
+	Mode     string             `json:"mode"`
 	Case     curation.ModelCase `json:"case"`
 	Proposal curation.Proposal  `json:"proposal"`
 	Verdict  curation.Verdict   `json:"verdict"`
@@ -44,7 +44,6 @@ func main() {
 	canonicalID := flag.String("canonical-id", "", "existing canonical ingredient id")
 	alias := flag.String("alias", "", "candidate equivalent alias to evaluate")
 	model := flag.String("model", envOrDefault("OPENAI_CURATION_MODEL", openaiagent.DefaultModel), "OpenAI model used for semantic curation")
-	baseURL := flag.String("openai-base-url", envOrDefault("OPENAI_BASE_URL", openaiagent.DefaultBaseURL), "OpenAI API base URL")
 	timeout := flag.Duration("timeout", 90*time.Second, "maximum execution time")
 	var productIDs stringListFlag
 	flag.Var(&productIDs, "product-id", "existing supermarket product UUID used as evidence; repeat for multiple products")
@@ -91,9 +90,8 @@ func main() {
 	}
 
 	client, err := openaiagent.NewClient(openaiagent.Config{
-		APIKey:  apiKey,
-		Model:   strings.TrimSpace(*model),
-		BaseURL: strings.TrimSpace(*baseURL),
+		APIKey: apiKey,
+		Model:  strings.TrimSpace(*model),
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -137,9 +135,9 @@ func loadModelCase(ctx context.Context, store *postgresstore.CatalogStore, canon
 		return curation.ModelCase{}, fmt.Errorf("candidate alias conflicts with verified canonical ingredient %s", aliasContext.VerifiedConflictID)
 	}
 
-	products := make([]curation.ProductEvidence, 0, len(productIDs))
+	products := make([]curation.ModelProductContext, 0, len(productIDs))
 	for _, productID := range productIDs {
-		product, found, err := store.CurationProductEvidence(ctx, productID)
+		product, found, err := store.CurationModelProductContext(ctx, productID)
 		if err != nil {
 			return curation.ModelCase{}, err
 		}
