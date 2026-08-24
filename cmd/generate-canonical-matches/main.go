@@ -12,7 +12,6 @@ import (
 
     _ "github.com/lib/pq"
 
-    "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
     "github.com/WolcenOn/Supermarket-Prices-API/internal/matching"
     postgresstore "github.com/WolcenOn/Supermarket-Prices-API/internal/storage/postgres"
 )
@@ -151,8 +150,3 @@ func main() {
         log.Fatal(err)
     }
 }
-
-// Keep catalog imported in the command's build graph explicit. The product
-// reader returns catalog.Product and this compile-time assertion documents the
-// intended boundary without introducing a second DTO for deterministic rules.
-var _ = catalog.Product{}
