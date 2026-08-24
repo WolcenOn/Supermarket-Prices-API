@@ -5,14 +5,34 @@ import (
 	"strings"
 )
 
+// ModelProductContext contains only trusted catalog metadata loaded by the
+// application. It intentionally includes the retailer's original taxonomy so
+// the model can reason from source structure instead of product-name similarity
+// alone.
+type ModelProductContext struct {
+	ID                   string  `json:"id"`
+	SupermarketID        string  `json:"supermarketId"`
+	Name                 string  `json:"name"`
+	Brand                string  `json:"brand,omitempty"`
+	SourceCategoryID     string  `json:"sourceCategoryId,omitempty"`
+	SourceCategoryName   string  `json:"sourceCategoryName,omitempty"`
+	SourceCategoryPath   string  `json:"sourceCategoryPath,omitempty"`
+	ItemType             string  `json:"itemType"`
+	NormalizedCategory   string  `json:"normalizedCategory"`
+	RecipeCompatible     bool    `json:"recipeCompatible"`
+	ClassificationStatus string  `json:"classificationStatus"`
+	ClassificationScore  float64 `json:"classificationScore,omitempty"`
+	ClassificationSource string  `json:"classificationSource"`
+}
+
 // ModelCase is the closed, deterministic context given to a curation model.
 // The model may judge this candidate or abstain, but it may not redirect the
 // proposal to a different alias, canonical ingredient, or evidence source.
 type ModelCase struct {
-	Alias                 string            `json:"alias"`
-	CanonicalIngredientID string            `json:"canonicalIngredientId"`
-	CanonicalName         string            `json:"canonicalName"`
-	Products              []ProductEvidence `json:"products"`
+	Alias                 string                `json:"alias"`
+	CanonicalIngredientID string                `json:"canonicalIngredientId"`
+	CanonicalName         string                `json:"canonicalName"`
+	Products              []ModelProductContext `json:"products"`
 }
 
 // VerifyModelProposal first binds an untrusted model response to the exact
