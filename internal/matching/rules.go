@@ -3,8 +3,11 @@ package matching
 import (
     "strings"
 
+    canonicaltext "github.com/WolcenOn/Supermarket-Prices-API/internal/canonical"
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
 )
+
+const SourceRulesV2 = "rules:v2"
 
 type Match struct {
     CanonicalIngredientID string
@@ -34,11 +37,37 @@ var preparedRiceTerms = []string{
     "al punto",
     "vasos de arroz",
     "vaso de arroz",
+    "vasitos de arroz",
+    "vasito de arroz",
+    "arroz con ",
     "marisco",
     "secreto iberico",
-    "secreto ibérico",
     "risotto",
     "paella preparada",
+}
+
+// Milk exclusions are deliberately conservative. These products may still be
+// useful groceries, but their extra semantic modifiers mean they should not be
+// collapsed into a basic recipe-level milk canonical without a dedicated rule.
+var specialMilkTerms = []string{
+    "condensada",
+    "evaporada",
+    "en polvo",
+    "crecimiento",
+    "continuacion",
+    "infantil",
+    "preparado lacteo",
+    "batido",
+    "chocolate",
+    "cacao",
+    "vainilla",
+    "fresa",
+    "cafe",
+    "proteina",
+    "calcio",
+    "omega",
+    "fresca",
+    "pasteurizada",
 }
 
 // Suggest returns only high-confidence, recipe-level equivalences. Ambiguous
@@ -54,30 +83,85 @@ func Suggest(product catalog.Product) []Match {
     }
 
     name := normalize(product.Name)
-    if name == "" || isPreparedRice(name) {
+    if name == "" {
         return nil
     }
 
-    out := make([]Match, 0, 1)
+    if match, ok := suggestMilk(product, name); ok {
+        return []Match{match}
+    }
+    if match, ok := suggestRice(product, name); ok {
+        return []Match{match}
+    }
+    return nil
+}
+
+func suggestRice(product catalog.Product, name string) (Match, bool) {
+    if isPreparedRice(name) {
+        return Match{}, false
+    }
+    if product.ClassificationStatus == "classified" &&
+        product.NormalizedCategory != "" &&
+        product.NormalizedCategory != "food.pantry.cereal.rice" {
+        return Match{}, false
+    }
+
     for _, candidate := range riceRules {
         if strings.Contains(name, candidate.phrase) {
-            out = append(out, Match{
-                CanonicalIngredientID: candidate.ingredientID,
-                SupermarketID: product.SupermarketID,
-                ExternalID: product.ExternalID,
-                Score: candidate.score,
-                Status: "automatic",
-                Source: "rules:v1",
-            })
-            break
+            return newMatch(product, candidate.ingredientID, candidate.score), true
         }
     }
-    return out
+    return Match{}, false
+}
+
+func suggestMilk(product catalog.Product, name string) (Match, bool) {
+    if !strings.Contains(name, "leche") {
+        return Match{}, false
+    }
+    if product.ClassificationStatus == "classified" &&
+        product.NormalizedCategory != "food.dairy.milk" {
+        return Match{}, false
+    }
+    if containsAny(name, specialMilkTerms) {
+        return Match{}, false
+    }
+
+    var canonicalID string
+    switch {
+    case strings.Contains(name, "semidesnatada") || strings.Contains(name, "semi desnatada"):
+        canonicalID = "leche_semidesnatada"
+    case strings.Contains(name, "desnatada"):
+        canonicalID = "leche_desnatada"
+    case strings.Contains(name, "entera"):
+        canonicalID = "leche_entera"
+    default:
+        return Match{}, false
+    }
+
+    if strings.Contains(name, "sin lactosa") {
+        canonicalID += "_sin_lactosa"
+    }
+    return newMatch(product, canonicalID, 0.99), true
+}
+
+func newMatch(product catalog.Product, canonicalID string, score float64) Match {
+    return Match{
+        CanonicalIngredientID: canonicalID,
+        SupermarketID:         product.SupermarketID,
+        ExternalID:            product.ExternalID,
+        Score:                 score,
+        Status:                "automatic",
+        Source:                SourceRulesV2,
+    }
 }
 
 func isPreparedRice(name string) bool {
-    for _, term := range preparedRiceTerms {
-        if strings.Contains(name, term) {
+    return containsAny(name, preparedRiceTerms)
+}
+
+func containsAny(value string, terms []string) bool {
+    for _, term := range terms {
+        if strings.Contains(value, term) {
             return true
         }
     }
@@ -85,5 +169,5 @@ func isPreparedRice(name string) bool {
 }
 
 func normalize(value string) string {
-    return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+    return canonicaltext.NormalizeText(value)
 }
