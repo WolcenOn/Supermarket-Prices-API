@@ -1,171 +1,171 @@
 package main
 
 import (
-	"context"
-	"database/sql"
-	"encoding/json"
-	"flag"
-	"fmt"
-	"log"
-	"os"
-	"strings"
-	"time"
+    "context"
+    "database/sql"
+    "encoding/json"
+    "flag"
+    "fmt"
+    "log"
+    "os"
+    "strings"
+    "time"
 
-	_ "github.com/lib/pq"
+    _ "github.com/lib/pq"
 
-	"github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
-	"github.com/WolcenOn/Supermarket-Prices-API/internal/importer"
-	"github.com/WolcenOn/Supermarket-Prices-API/internal/matching"
-	postgresstore "github.com/WolcenOn/Supermarket-Prices-API/internal/storage/postgres"
-	"github.com/WolcenOn/Supermarket-Prices-API/internal/supermarkets/dia"
+    "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
+    "github.com/WolcenOn/Supermarket-Prices-API/internal/importer"
+    "github.com/WolcenOn/Supermarket-Prices-API/internal/matching"
+    postgresstore "github.com/WolcenOn/Supermarket-Prices-API/internal/storage/postgres"
+    "github.com/WolcenOn/Supermarket-Prices-API/internal/supermarkets/dia"
 )
 
 var defaultDIACategories = []string{
-	// Keep the default validation set deliberately small. This public category
-	// currently exposes rice SKUs, names, prices and unit prices without using
-	// DIA's search routes. Category identifiers can change, so callers may
-	// override this list with --categories without changing the provider.
-	"https://www.dia.es/arroz-pastas-y-legumbres/c/L106",
+    // Keep the default validation set deliberately small. This public category
+    // currently exposes rice SKUs, names, prices and unit prices without using
+    // DIA's search routes. Category identifiers can change, so callers may
+    // override this list with --categories without changing the provider.
+    "https://www.dia.es/arroz-pastas-y-legumbres/c/L106",
 }
 
 type collectingSink struct {
-	products []catalog.Product
+    products []catalog.Product
 }
 
 func (s *collectingSink) SaveProducts(_ context.Context, products []catalog.Product) error {
-	s.products = append(s.products, products...)
-	return nil
+    s.products = append(s.products, products...)
+    return nil
 }
 
 type matchingSink struct {
-	db       *sql.DB
-	delegate importer.Sink
+    db       *sql.DB
+    delegate importer.Sink
 }
 
 func (s *matchingSink) SaveProducts(ctx context.Context, products []catalog.Product) error {
-	if err := s.delegate.SaveProducts(ctx, products); err != nil {
-		return err
-	}
+    if err := s.delegate.SaveProducts(ctx, products); err != nil {
+        return err
+    }
 
-	matches := make([]matching.Match, 0)
-	for _, product := range products {
-		matches = append(matches, matching.Suggest(product)...)
-	}
-	return postgresstore.SaveIngredientMatches(ctx, s.db, matches)
+    matches := make([]matching.Match, 0)
+    for _, product := range products {
+        matches = append(matches, matching.Suggest(product)...)
+    }
+    return postgresstore.SaveIngredientMatches(ctx, s.db, matches)
 }
 
 func persistentImportSink(db *sql.DB, delegate importer.Sink, matchProducts bool) importer.Sink {
-	if !matchProducts {
-		return delegate
-	}
-	return &matchingSink{db: db, delegate: delegate}
+    if !matchProducts {
+        return delegate
+    }
+    return &matchingSink{db: db, delegate: delegate}
 }
 
 func main() {
-	supermarket := flag.String("supermarket", "dia", "supermarket provider to import")
-	postalCode := flag.String("postal-code", "", "postal code used for location-sensitive observations")
-	categories := flag.String("categories", "", "comma-separated DIA category URLs; defaults to a small validation set")
-	dryRun := flag.Bool("dry-run", true, "fetch and normalize without persisting")
-	matchProducts := flag.Bool("match-products", true, "when persisting, also save deterministic product-to-canonical matches")
-	timeout := flag.Duration("timeout", 45*time.Second, "maximum importer execution time")
-	flag.Parse()
+    supermarket := flag.String("supermarket", "dia", "supermarket provider to import")
+    postalCode := flag.String("postal-code", "", "postal code used for location-sensitive observations")
+    categories := flag.String("categories", "", "comma-separated DIA category URLs; defaults to a small validation set")
+    dryRun := flag.Bool("dry-run", true, "fetch and normalize without persisting")
+    matchProducts := flag.Bool("match-products", true, "when persisting, also save deterministic product-to-canonical matches")
+    timeout := flag.Duration("timeout", 45*time.Second, "maximum importer execution time")
+    flag.Parse()
 
-	if strings.ToLower(strings.TrimSpace(*supermarket)) != "dia" {
-		log.Fatalf("unsupported supermarket %q; current phase supports dia", *supermarket)
-	}
+    if strings.ToLower(strings.TrimSpace(*supermarket)) != "dia" {
+        log.Fatalf("unsupported supermarket %q; current phase supports dia", *supermarket)
+    }
 
-	categoryURLs := defaultDIACategories
-	if strings.TrimSpace(*categories) != "" {
-		categoryURLs = splitCSV(*categories)
-	}
+    categoryURLs := defaultDIACategories
+    if strings.TrimSpace(*categories) != "" {
+        categoryURLs = splitCSV(*categories)
+    }
 
-	source := dia.NewHTTPSource(categoryURLs)
-	provider := dia.NewProvider(source)
+    source := dia.NewHTTPSource(categoryURLs)
+    provider := dia.NewProvider(source)
 
-	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
-	defer cancel()
+    ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+    defer cancel()
 
-	if *dryRun {
-		runDry(ctx, provider, strings.TrimSpace(*postalCode))
-		return
-	}
+    if *dryRun {
+        runDry(ctx, provider, strings.TrimSpace(*postalCode))
+        return
+    }
 
-	runPersistent(ctx, provider, strings.TrimSpace(*postalCode), *matchProducts)
+    runPersistent(ctx, provider, strings.TrimSpace(*postalCode), *matchProducts)
 }
 
 func runDry(ctx context.Context, provider importer.Provider, postalCode string) {
-	sink := &collectingSink{}
-	result, err := importer.Run(ctx, provider, sink, "catalog", postalCode)
-	if err != nil {
-		log.Fatal(err)
-	}
+    sink := &collectingSink{}
+    result, err := importer.Run(ctx, provider, sink, "catalog", postalCode)
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	output := struct {
-		Mode   string            `json:"mode"`
-		Result importer.Result   `json:"result"`
-		Items  []catalog.Product `json:"items"`
-	}{
-		Mode:   "dry-run",
-		Result: result,
-		Items:  sink.products,
-	}
+    output := struct {
+        Mode   string            `json:"mode"`
+        Result importer.Result   `json:"result"`
+        Items  []catalog.Product `json:"items"`
+    }{
+        Mode:   "dry-run",
+        Result: result,
+        Items:  sink.products,
+    }
 
-	encoder := json.NewEncoder(os.Stdout)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(output); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+    encoder := json.NewEncoder(os.Stdout)
+    encoder.SetIndent("", "  ")
+    if err := encoder.Encode(output); err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
+    }
 }
 
 func runPersistent(ctx context.Context, provider importer.Provider, postalCode string, matchProducts bool) {
-	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
-	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is required when --dry-run=false")
-	}
+    databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+    if databaseURL == "" {
+        log.Fatal("DATABASE_URL is required when --dry-run=false")
+    }
 
-	db, err := sql.Open("postgres", databaseURL)
-	if err != nil {
-		log.Fatalf("open postgres: %v", err)
-	}
-	defer db.Close()
+    db, err := sql.Open("postgres", databaseURL)
+    if err != nil {
+        log.Fatalf("open postgres: %v", err)
+    }
+    defer db.Close()
 
-	if err := db.PingContext(ctx); err != nil {
-		log.Fatalf("ping postgres: %v", err)
-	}
+    if err := db.PingContext(ctx); err != nil {
+        log.Fatalf("ping postgres: %v", err)
+    }
 
-	persistent := postgresstore.NewSink(db)
-	sink := persistentImportSink(db, persistent, matchProducts)
-	result, err := importer.Run(ctx, provider, sink, "catalog", postalCode)
-	if err != nil {
-		log.Fatal(err)
-	}
+    persistent := postgresstore.NewSink(db)
+    sink := persistentImportSink(db, persistent, matchProducts)
+    result, err := importer.Run(ctx, provider, sink, "catalog", postalCode)
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	output := struct {
-		Mode          string          `json:"mode"`
-		MatchProducts bool            `json:"matchProducts"`
-		Result        importer.Result `json:"result"`
-	}{
-		Mode:          "persist",
-		MatchProducts: matchProducts,
-		Result:        result,
-	}
+    output := struct {
+        Mode          string          `json:"mode"`
+        MatchProducts bool            `json:"matchProducts"`
+        Result        importer.Result `json:"result"`
+    }{
+        Mode:          "persist",
+        MatchProducts: matchProducts,
+        Result:        result,
+    }
 
-	encoder := json.NewEncoder(os.Stdout)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(output); err != nil {
-		log.Fatal(err)
-	}
+    encoder := json.NewEncoder(os.Stdout)
+    encoder.SetIndent("", "  ")
+    if err := encoder.Encode(output); err != nil {
+        log.Fatal(err)
+    }
 }
 
 func splitCSV(value string) []string {
-	parts := strings.Split(value, ",")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
+    parts := strings.Split(value, ",")
+    out := make([]string, 0, len(parts))
+    for _, part := range parts {
+        part = strings.TrimSpace(part)
+        if part != "" {
+            out = append(out, part)
+        }
+    }
+    return out
 }
