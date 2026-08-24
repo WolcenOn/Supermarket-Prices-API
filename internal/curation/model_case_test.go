@@ -10,9 +10,11 @@ func modelCaseFixture() ModelCase {
 		Alias:                 "Arroz de grano redondo",
 		CanonicalIngredientID: "arroz_redondo",
 		CanonicalName:         "Arroz redondo",
-		Products: []ProductEvidence{{
+		Products: []ModelProductContext{{
 			ID:                   "product-1",
+			SupermarketID:        "dia",
 			Name:                 "Arroz redondo 1 kg",
+			SourceCategoryName:   "Arroz",
 			ItemType:             "food_ingredient",
 			NormalizedCategory:   "food.pantry.cereal.rice",
 			RecipeCompatible:     true,
