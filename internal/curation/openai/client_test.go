@@ -66,7 +66,12 @@ func TestClientProposeUsesStructuredResponsesAndAttachesTrustedAgentMetadata(t *
 		Alias:                 "Arroz de grano redondo",
 		CanonicalIngredientID: "arroz_redondo",
 		CanonicalName:         "Arroz redondo",
-		Products:              []curation.ProductEvidence{{ID: "product-1", Name: "Arroz redondo 1 kg"}},
+		Products: []curation.ModelProductContext{{
+			ID:                 "product-1",
+			SupermarketID:      "dia",
+			Name:               "Arroz redondo 1 kg",
+			SourceCategoryName: "Arroz",
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
