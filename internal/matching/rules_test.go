@@ -98,6 +98,76 @@ func TestSuggestLeavesSpecialMilkUnmatched(t *testing.T) {
     }
 }
 
+func TestSuggestMatchesFreshDIAVegetablesBySourceCategory(t *testing.T) {
+    cases := []struct {
+        categoryID string
+        name       string
+        want       string
+    }{
+        {"L2022", "Cebolla dulce granel 1 Kg aprox.", "cebolla"},
+        {"L2023", "Tomate pera bandeja 500 g", "tomate"},
+        {"L2023", "Pimiento verde freír granel 500 g aprox.", "pimiento"},
+        {"L2023", "Pepino granel 1 Kg aprox.", "pepino"},
+        {"L2027", "Brotes tiernos bandeja 100 g", "brotes_tiernos"},
+        {"L2028", "Patatas para freír 2 Kg", "patata"},
+        {"L2181", "Calabaza cortada a trozos al vacío 500 g", "calabaza"},
+        {"L2029", "Champiñón laminado bandeja 250 g", "champinon"},
+        {"L2029", "Seta ostra bandeja 200 g", "seta"},
+    }
+
+    for _, tc := range cases {
+        product := catalog.Product{
+            SupermarketID:        "dia",
+            ExternalID:           "sku",
+            Name:                 tc.name,
+            SourceCategoryID:     tc.categoryID,
+            ItemType:             "food_ingredient",
+            NormalizedCategory:   "food.produce.vegetable",
+            RecipeCompatible:     true,
+            ClassificationStatus: "classified",
+        }
+        matches := Suggest(product)
+        if len(matches) != 1 || matches[0].CanonicalIngredientID != tc.want {
+            t.Fatalf("%s %q: got %#v, want %s", tc.categoryID, tc.name, matches, tc.want)
+        }
+        if matches[0].Score != 0.99 || matches[0].Status != "automatic" {
+            t.Fatalf("%q: unexpected match metadata %#v", tc.name, matches[0])
+        }
+    }
+}
+
+func TestSuggestVegetableRequiresVerifiedFreshCategory(t *testing.T) {
+    product := catalog.Product{
+        SupermarketID:        "dia",
+        ExternalID:           "frozen-onion",
+        Name:                 "Cebolla troceada Dia Vegecampo 400 g",
+        SourceCategoryID:     "L2025",
+        ItemType:             "food_ingredient",
+        NormalizedCategory:   "food.produce.vegetable",
+        RecipeCompatible:     true,
+        ClassificationStatus: "classified",
+    }
+    if matches := Suggest(product); len(matches) != 0 {
+        t.Fatalf("non-fresh source category unexpectedly matched: %#v", matches)
+    }
+}
+
+func TestSuggestVegetableRequiresProduceClassification(t *testing.T) {
+    product := catalog.Product{
+        SupermarketID:        "dia",
+        ExternalID:           "wrong-classification",
+        Name:                 "Tomate pera bandeja 500 g",
+        SourceCategoryID:     "L2023",
+        ItemType:             "food_ingredient",
+        NormalizedCategory:   "food.prepared",
+        RecipeCompatible:     true,
+        ClassificationStatus: "classified",
+    }
+    if matches := Suggest(product); len(matches) != 0 {
+        t.Fatalf("wrong normalized category unexpectedly matched: %#v", matches)
+    }
+}
+
 func TestSuggestRespectsExplicitNonRecipeClassification(t *testing.T) {
     product := catalog.Product{
         SupermarketID:        "dia",

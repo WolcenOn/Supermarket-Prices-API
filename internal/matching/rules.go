@@ -32,6 +32,47 @@ var riceRules = []rule{
     {ingredientID: "arroz_integral", phrase: "arroz integral", score: 0.99},
 }
 
+// Vegetable rules are scoped to verified fresh DIA source categories. The
+// category gate is as important as the phrase: the same words may appear in
+// frozen, canned or prepared products, which must not become automatic recipe
+// ingredient matches.
+var vegetableRulesBySourceCategory = map[string][]rule{
+    "l2022": {
+        {ingredientID: "ajo", phrase: "ajo", score: 0.99},
+        {ingredientID: "cebolla", phrase: "cebolla", score: 0.99},
+        {ingredientID: "puerro", phrase: "puerro", score: 0.99},
+    },
+    "l2023": {
+        {ingredientID: "tomate", phrase: "tomate", score: 0.99},
+        {ingredientID: "pimiento", phrase: "pimiento", score: 0.99},
+        {ingredientID: "pepino", phrase: "pepino", score: 0.99},
+    },
+    "l2024": {
+        {ingredientID: "brocoli", phrase: "brocoli", score: 0.99},
+        {ingredientID: "coliflor", phrase: "coliflor", score: 0.99},
+        {ingredientID: "judias_verdes", phrase: "judias verdes", score: 0.99},
+        {ingredientID: "judias_verdes", phrase: "judia verde", score: 0.99},
+    },
+    "l2027": {
+        {ingredientID: "brotes_tiernos", phrase: "brotes tiernos", score: 0.99},
+        {ingredientID: "lechuga", phrase: "lechuga", score: 0.99},
+        {ingredientID: "espinaca", phrase: "espinaca", score: 0.99},
+    },
+    "l2028": {
+        {ingredientID: "patata", phrase: "patata", score: 0.99},
+        {ingredientID: "zanahoria", phrase: "zanahoria", score: 0.99},
+    },
+    "l2181": {
+        {ingredientID: "calabacin", phrase: "calabacin", score: 0.99},
+        {ingredientID: "calabaza", phrase: "calabaza", score: 0.99},
+        {ingredientID: "berenjena", phrase: "berenjena", score: 0.99},
+    },
+    "l2029": {
+        {ingredientID: "champinon", phrase: "champinon", score: 0.99},
+        {ingredientID: "seta", phrase: "seta", score: 0.99},
+    },
+}
+
 var preparedRiceTerms = []string{
     "tres delicias",
     "al punto",
@@ -87,6 +128,9 @@ func Suggest(product catalog.Product) []Match {
         return nil
     }
 
+    if match, ok := suggestVegetable(product, name); ok {
+        return []Match{match}
+    }
     if match, ok := suggestMilk(product, name); ok {
         return []Match{match}
     }
@@ -94,6 +138,30 @@ func Suggest(product catalog.Product) []Match {
         return []Match{match}
     }
     return nil
+}
+
+func suggestVegetable(product catalog.Product, name string) (Match, bool) {
+    // Unlike the older rice fallback, vegetable matching is intentionally
+    // classification-dependent. This prevents names from unrelated legacy
+    // products from becoming automatic produce matches.
+    if product.ClassificationStatus != "classified" ||
+        !product.RecipeCompatible ||
+        product.ItemType != "food_ingredient" ||
+        product.NormalizedCategory != "food.produce.vegetable" {
+        return Match{}, false
+    }
+
+    categoryID := strings.ToLower(strings.TrimSpace(product.SourceCategoryID))
+    candidates, ok := vegetableRulesBySourceCategory[categoryID]
+    if !ok {
+        return Match{}, false
+    }
+    for _, candidate := range candidates {
+        if strings.Contains(name, candidate.phrase) {
+            return newMatch(product, candidate.ingredientID, candidate.score), true
+        }
+    }
+    return Match{}, false
 }
 
 func suggestRice(product catalog.Product, name string) (Match, bool) {

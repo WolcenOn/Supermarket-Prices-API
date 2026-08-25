@@ -42,7 +42,7 @@ type output struct {
 
 func main() {
     supermarket := flag.String("supermarket", "dia", "supermarket to inspect; current controlled phase supports dia")
-    family := flag.String("family", "all", "product family: all, rice, or milk")
+    family := flag.String("family", "all", "product family: all, rice, milk, or vegetables")
     limit := flag.Int("limit", 200, "maximum classified products to inspect")
     persist := flag.Bool("persist", false, "persist eligible automatic product matches; preview-only by default")
     timeout := flag.Duration("timeout", 30*time.Second, "maximum execution time")
@@ -54,9 +54,9 @@ func main() {
         log.Fatalf("unsupported supermarket %q; current controlled phase supports dia", supermarketID)
     }
     switch familyName {
-    case "all", "rice", "milk":
+    case "all", "rice", "milk", "vegetables":
     default:
-        log.Fatalf("unsupported family %q; expected all, rice, or milk", familyName)
+        log.Fatalf("unsupported family %q; expected all, rice, milk, or vegetables", familyName)
     }
     if *limit <= 0 || *limit > 5000 {
         log.Fatal("--limit must be between 1 and 5000")
