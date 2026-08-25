@@ -156,6 +156,14 @@ func suggestVegetable(product catalog.Product, name string) (Match, bool) {
     if !ok {
         return Match{}, false
     }
+
+    // DIA's "cebolla tierna" is a distinct culinary concept (spring onion),
+    // so keep it unmatched until it has its own canonical instead of collapsing
+    // it into the generic bulb-onion concept.
+    if categoryID == "l2022" && strings.Contains(name, "cebolla tierna") {
+        return Match{}, false
+    }
+
     for _, candidate := range candidates {
         if strings.Contains(name, candidate.phrase) {
             return newMatch(product, candidate.ingredientID, candidate.score), true
