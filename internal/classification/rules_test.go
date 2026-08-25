@@ -111,6 +111,92 @@ func TestClassifyUsesSourceTaxonomyBeforeCanonicalMatching(t *testing.T) {
             wantStatus:   "classified",
         },
         {
+            name: "fresh tomato category is a recipe ingredient",
+            product: catalog.Product{
+                Name:               "Tomates cherry Tomati&co 200 g",
+                SourceCategoryID:   "L2023",
+                SourceCategoryName: "Tomates pimientos y pepinos",
+                SourceCategoryPath: "verduras/tomates-pimientos-y-pepinos/c/L2023",
+            },
+            wantType:     "food_ingredient",
+            wantCategory: "food.produce.vegetable",
+            wantRecipe:   true,
+            wantStatus:   "classified",
+        },
+        {
+            name: "fresh squash category is a recipe ingredient",
+            product: catalog.Product{
+                Name:               "Calabaza 1.6 Kg aprox.",
+                SourceCategoryID:   "L2181",
+                SourceCategoryName: "Calabacin calabaza y berenjena",
+                SourceCategoryPath: "verduras/calabacin-calabaza-y-berenjena/c/L2181",
+            },
+            wantType:     "food_ingredient",
+            wantCategory: "food.produce.vegetable",
+            wantRecipe:   true,
+            wantStatus:   "classified",
+        },
+        {
+            name: "mushroom category is a recipe ingredient",
+            product: catalog.Product{
+                Name:               "Seta ostra bandeja 200 g",
+                SourceCategoryID:   "L2029",
+                SourceCategoryName: "Setas y champinones",
+            },
+            wantType:     "food_ingredient",
+            wantCategory: "food.produce.mushroom",
+            wantRecipe:   true,
+            wantStatus:   "classified",
+        },
+        {
+            name: "aromatic herb category is a recipe ingredient",
+            product: catalog.Product{
+                Name:               "Perejil 20 g",
+                SourceCategoryID:   "L2031",
+                SourceCategoryName: "Hierbas aromaticas",
+            },
+            wantType:     "food_ingredient",
+            wantCategory: "food.produce.herb",
+            wantRecipe:   true,
+            wantStatus:   "classified",
+        },
+        {
+            name: "vegetable preserves remain pending",
+            product: catalog.Product{
+                Name:               "Maíz dulce Dia Vegecampo 3 x 70 g",
+                SourceCategoryID:   "L2026",
+                SourceCategoryName: "Conservas de verduras",
+            },
+            wantType:     "other",
+            wantCategory: "",
+            wantRecipe:   false,
+            wantStatus:   "pending",
+        },
+        {
+            name: "prepared salads remain pending",
+            product: catalog.Product{
+                Name:               "Ensalada preparada 200 g",
+                SourceCategoryID:   "L2030",
+                SourceCategoryName: "Ensaladas y verduras preparadas",
+            },
+            wantType:     "other",
+            wantCategory: "",
+            wantRecipe:   false,
+            wantStatus:   "pending",
+        },
+        {
+            name: "frozen vegetables remain pending",
+            product: catalog.Product{
+                Name:               "Verduras congeladas 500 g",
+                SourceCategoryID:   "L2025",
+                SourceCategoryName: "Verduras congeladas y al vapor",
+            },
+            wantType:     "other",
+            wantCategory: "",
+            wantRecipe:   false,
+            wantStatus:   "pending",
+        },
+        {
             name: "beverage",
             product: catalog.Product{
                 Name:               "Agua mineral 1,5 L",
@@ -157,8 +243,8 @@ func TestClassifyUsesSourceTaxonomyBeforeCanonicalMatching(t *testing.T) {
             if got.Status != tt.wantStatus {
                 t.Fatalf("Status = %q, want %q", got.Status, tt.wantStatus)
             }
-            if got.Source != SourceRulesV1 {
-                t.Fatalf("Source = %q, want %q", got.Source, SourceRulesV1)
+            if got.Source != SourceRulesV2 {
+                t.Fatalf("Source = %q, want %q", got.Source, SourceRulesV2)
             }
         })
     }
@@ -177,5 +263,8 @@ func TestApplyWritesClassificationToProduct(t *testing.T) {
     }
     if product.ClassificationStatus != "classified" || product.ClassificationScore <= 0 {
         t.Fatalf("classification metadata not written: %#v", product)
+    }
+    if product.ClassificationSource != SourceRulesV2 {
+        t.Fatalf("ClassificationSource = %q, want %q", product.ClassificationSource, SourceRulesV2)
     }
 }
