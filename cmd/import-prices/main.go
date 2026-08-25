@@ -29,6 +29,8 @@ var defaultDIACategories = []string{
     "https://www.dia.es/arroz-pastas-y-legumbres/c/L106",
 }
 
+const dryRunSamplesPerCategory = 3
+
 type collectingSink struct {
     products []catalog.Product
 }
@@ -62,6 +64,39 @@ func persistentImportSink(db *sql.DB, delegate importer.Sink, matchProducts bool
     return &matchingSink{db: db, delegate: delegate}
 }
 
+type dryRunSample struct {
+    ExternalID    string  `json:"externalId"`
+    Name          string  `json:"name"`
+    PackageAmount float64 `json:"packageAmount,omitempty"`
+    PackageUnit   string  `json:"packageUnit,omitempty"`
+    Price         float64 `json:"price"`
+    PricePerUnit  float64 `json:"pricePerUnit,omitempty"`
+    PriceUnit     string  `json:"priceUnit,omitempty"`
+}
+
+type dryRunCategorySummary struct {
+    ID               string         `json:"id"`
+    Name             string         `json:"name"`
+    Path             string         `json:"path"`
+    Count            int            `json:"count"`
+    Classified       int            `json:"classified"`
+    Pending          int            `json:"pending"`
+    RecipeCompatible int            `json:"recipeCompatible"`
+    Samples          []dryRunSample `json:"samples,omitempty"`
+}
+
+type dryRunSummary struct {
+    Mode                   string                  `json:"mode"`
+    Output                 string                  `json:"output"`
+    Result                 importer.Result         `json:"result"`
+    ItemCount              int                     `json:"itemCount"`
+    ClassifiedCount        int                     `json:"classifiedCount"`
+    PendingCount           int                     `json:"pendingCount"`
+    RecipeCompatibleCount  int                     `json:"recipeCompatibleCount"`
+    ItemTypes              map[string]int          `json:"itemTypes"`
+    Categories             []dryRunCategorySummary `json:"categories"`
+}
+
 func main() {
     supermarket := flag.String("supermarket", "dia", "supermarket provider to import")
     postalCode := flag.String("postal-code", "", "postal code used for location-sensitive observations")
@@ -70,6 +105,7 @@ func main() {
     sitemapURL := flag.String("sitemap-url", "https://www.dia.es/sitemap.xml", "DIA sitemap URL used when --category-parents is set")
     categoryLimit := flag.Int("category-limit", 25, "maximum number of discovered categories allowed for one import; 0 disables the safety limit")
     dryRun := flag.Bool("dry-run", true, "fetch and normalize without persisting")
+    dryRunOutput := flag.String("dry-run-output", "full", "dry-run output: full or summary")
     matchProducts := flag.Bool("match-products", true, "when persisting, also save deterministic product-to-canonical matches")
     timeout := flag.Duration("timeout", 45*time.Second, "maximum importer execution time, including taxonomy discovery")
     flag.Parse()
@@ -82,6 +118,10 @@ func main() {
     }
     if *categoryLimit < 0 {
         log.Fatal("--category-limit must be >= 0")
+    }
+    outputMode := strings.ToLower(strings.TrimSpace(*dryRunOutput))
+    if outputMode != "full" && outputMode != "summary" {
+        log.Fatal("--dry-run-output must be full or summary")
     }
 
     ctx, cancel := context.WithTimeout(context.Background(), *timeout)
@@ -99,7 +139,7 @@ func main() {
     provider := dia.NewProvider(source)
 
     if *dryRun {
-        runDry(ctx, provider, strings.TrimSpace(*postalCode))
+        runDry(ctx, provider, strings.TrimSpace(*postalCode), outputMode)
         return
     }
 
@@ -168,11 +208,23 @@ func selectCategoryURLs(categories []dia.TaxonomyCategory, parents []string, cat
     return urls, nil
 }
 
-func runDry(ctx context.Context, provider importer.Provider, postalCode string) {
+func runDry(ctx context.Context, provider importer.Provider, postalCode, outputMode string) {
     sink := &collectingSink{}
     result, err := importer.Run(ctx, provider, sink, "catalog", postalCode)
     if err != nil {
         log.Fatal(err)
+    }
+
+    encoder := json.NewEncoder(os.Stdout)
+    encoder.SetIndent("", "  ")
+
+    if outputMode == "summary" {
+        summary := buildDryRunSummary(result, sink.products)
+        if err := encoder.Encode(summary); err != nil {
+            fmt.Fprintln(os.Stderr, err)
+            os.Exit(1)
+        }
+        return
     }
 
     output := struct {
@@ -185,12 +237,82 @@ func runDry(ctx context.Context, provider importer.Provider, postalCode string) 
         Items:  sink.products,
     }
 
-    encoder := json.NewEncoder(os.Stdout)
-    encoder.SetIndent("", "  ")
     if err := encoder.Encode(output); err != nil {
         fmt.Fprintln(os.Stderr, err)
         os.Exit(1)
     }
+}
+
+func buildDryRunSummary(result importer.Result, products []catalog.Product) dryRunSummary {
+    summary := dryRunSummary{
+        Mode:      "dry-run",
+        Output:    "summary",
+        Result:    result,
+        ItemCount: len(products),
+        ItemTypes: make(map[string]int),
+    }
+
+    byCategory := make(map[string]*dryRunCategorySummary)
+    for _, product := range products {
+        itemType := strings.TrimSpace(product.ItemType)
+        if itemType == "" {
+            itemType = "unknown"
+        }
+        summary.ItemTypes[itemType]++
+
+        switch product.ClassificationStatus {
+        case "classified":
+            summary.ClassifiedCount++
+        default:
+            summary.PendingCount++
+        }
+        if product.RecipeCompatible {
+            summary.RecipeCompatibleCount++
+        }
+
+        key := strings.TrimSpace(product.SourceCategoryID) + "|" + strings.TrimSpace(product.SourceCategoryPath)
+        category := byCategory[key]
+        if category == nil {
+            category = &dryRunCategorySummary{
+                ID:   product.SourceCategoryID,
+                Name: product.SourceCategoryName,
+                Path: product.SourceCategoryPath,
+            }
+            byCategory[key] = category
+        }
+        category.Count++
+        if product.ClassificationStatus == "classified" {
+            category.Classified++
+        } else {
+            category.Pending++
+        }
+        if product.RecipeCompatible {
+            category.RecipeCompatible++
+        }
+        if len(category.Samples) < dryRunSamplesPerCategory {
+            category.Samples = append(category.Samples, dryRunSample{
+                ExternalID:    product.ExternalID,
+                Name:          product.Name,
+                PackageAmount: product.PackageAmount,
+                PackageUnit:   product.PackageUnit,
+                Price:         product.Price,
+                PricePerUnit:  product.PricePerUnit,
+                PriceUnit:     product.PriceUnit,
+            })
+        }
+    }
+
+    summary.Categories = make([]dryRunCategorySummary, 0, len(byCategory))
+    for _, category := range byCategory {
+        summary.Categories = append(summary.Categories, *category)
+    }
+    sort.Slice(summary.Categories, func(i, j int) bool {
+        if summary.Categories[i].Path == summary.Categories[j].Path {
+            return summary.Categories[i].ID < summary.Categories[j].ID
+        }
+        return summary.Categories[i].Path < summary.Categories[j].Path
+    })
+    return summary
 }
 
 func runPersistent(ctx context.Context, provider importer.Provider, postalCode string, matchProducts bool) {

@@ -6,7 +6,7 @@ import (
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
 )
 
-const SourceRulesV1 = "rules:v1"
+const SourceRulesV2 = "rules:v2"
 
 type Result struct {
     ItemType           string
@@ -72,6 +72,15 @@ var knownRiceTerms = []string{
     "arroz largo",
 }
 
+var freshVegetableCategoryIDs = map[string]struct{}{
+    "l2022": {}, // Ajos cebollas y puerros
+    "l2023": {}, // Tomates pimientos y pepinos
+    "l2024": {}, // Brocoli coliflor y judias verdes
+    "l2027": {}, // Lechugas y hojas verdes
+    "l2028": {}, // Patatas y zanahorias
+    "l2181": {}, // Calabacin calabaza y berenjena
+}
+
 // Classify assigns a conservative product type before canonical matching.
 // Source taxonomy is preferred when available, while product-name rules are
 // used as a fallback. Unknown products stay pending instead of being forced
@@ -101,6 +110,10 @@ func Classify(product catalog.Product) Result {
         return classified("food_ingredient", "food.dairy.milk", true, 0.99)
     }
 
+    if category, ok := freshProduceCategory(product); ok {
+        return classified("food_ingredient", category, true, 0.99)
+    }
+
     if strings.Contains(name, "arroz") && (strings.Contains(sourceCategory, "arroz") || containsAny(name, knownRiceTerms)) {
         return classified("food_ingredient", "food.pantry.cereal.rice", true, 0.98)
     }
@@ -115,7 +128,7 @@ func Classify(product catalog.Product) Result {
         RecipeCompatible:   false,
         Status:             "pending",
         Score:              0,
-        Source:             SourceRulesV1,
+        Source:             SourceRulesV2,
     }
 }
 
@@ -140,7 +153,7 @@ func classified(itemType, category string, recipeCompatible bool, score float64)
         RecipeCompatible:   recipeCompatible,
         Status:             "classified",
         Score:              score,
-        Source:             SourceRulesV1,
+        Source:             SourceRulesV2,
     }
 }
 
@@ -152,6 +165,22 @@ func isMilkSourceCategory(product catalog.Product) bool {
     return categoryID == "l2051" ||
         categoryName == "leche" ||
         strings.Contains(categoryPath, "leche c l2051")
+}
+
+func freshProduceCategory(product catalog.Product) (string, bool) {
+    categoryID := normalize(product.SourceCategoryID)
+    if _, ok := freshVegetableCategoryIDs[categoryID]; ok {
+        return "food.produce.vegetable", true
+    }
+
+    switch categoryID {
+    case "l2029": // Setas y champinones
+        return "food.produce.mushroom", true
+    case "l2031": // Hierbas aromaticas
+        return "food.produce.herb", true
+    default:
+        return "", false
+    }
 }
 
 func containsAny(value string, terms []string) bool {
