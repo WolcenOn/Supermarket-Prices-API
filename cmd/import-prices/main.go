@@ -8,6 +8,7 @@ import (
     "fmt"
     "log"
     "os"
+    "sort"
     "strings"
     "time"
 
@@ -65,25 +66,37 @@ func main() {
     supermarket := flag.String("supermarket", "dia", "supermarket provider to import")
     postalCode := flag.String("postal-code", "", "postal code used for location-sensitive observations")
     categories := flag.String("categories", "", "comma-separated DIA category URLs; defaults to a small validation set")
+    categoryParents := flag.String("category-parents", "", "comma-separated DIA taxonomy parent paths to discover and import, e.g. verduras,huevos-leche-y-mantequilla")
+    sitemapURL := flag.String("sitemap-url", "https://www.dia.es/sitemap.xml", "DIA sitemap URL used when --category-parents is set")
+    categoryLimit := flag.Int("category-limit", 25, "maximum number of discovered categories allowed for one import; 0 disables the safety limit")
     dryRun := flag.Bool("dry-run", true, "fetch and normalize without persisting")
     matchProducts := flag.Bool("match-products", true, "when persisting, also save deterministic product-to-canonical matches")
-    timeout := flag.Duration("timeout", 45*time.Second, "maximum importer execution time")
+    timeout := flag.Duration("timeout", 45*time.Second, "maximum importer execution time, including taxonomy discovery")
     flag.Parse()
 
     if strings.ToLower(strings.TrimSpace(*supermarket)) != "dia" {
         log.Fatalf("unsupported supermarket %q; current phase supports dia", *supermarket)
     }
+    if strings.TrimSpace(*categories) != "" && strings.TrimSpace(*categoryParents) != "" {
+        log.Fatal("use either --categories or --category-parents, not both")
+    }
+    if *categoryLimit < 0 {
+        log.Fatal("--category-limit must be >= 0")
+    }
 
-    categoryURLs := defaultDIACategories
-    if strings.TrimSpace(*categories) != "" {
-        categoryURLs = splitCSV(*categories)
+    ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+    defer cancel()
+
+    categoryURLs, err := resolveCategoryURLs(ctx, strings.TrimSpace(*categories), strings.TrimSpace(*categoryParents), strings.TrimSpace(*sitemapURL), *categoryLimit)
+    if err != nil {
+        log.Fatal(err)
+    }
+    if strings.TrimSpace(*categoryParents) != "" {
+        log.Printf("resolved %d DIA categories from parent paths %q", len(categoryURLs), *categoryParents)
     }
 
     source := dia.NewHTTPSource(categoryURLs)
     provider := dia.NewProvider(source)
-
-    ctx, cancel := context.WithTimeout(context.Background(), *timeout)
-    defer cancel()
 
     if *dryRun {
         runDry(ctx, provider, strings.TrimSpace(*postalCode))
@@ -91,6 +104,68 @@ func main() {
     }
 
     runPersistent(ctx, provider, strings.TrimSpace(*postalCode), *matchProducts)
+}
+
+func resolveCategoryURLs(ctx context.Context, explicitCategories, categoryParents, sitemapURL string, categoryLimit int) ([]string, error) {
+    if explicitCategories != "" {
+        return splitCSV(explicitCategories), nil
+    }
+    if categoryParents == "" {
+        return append([]string(nil), defaultDIACategories...), nil
+    }
+
+    discoverer := dia.NewTaxonomyDiscoverer()
+    result, err := discoverer.Discover(ctx, sitemapURL, dia.TaxonomyOptions{Limit: 0})
+    if err != nil {
+        return nil, fmt.Errorf("discover DIA taxonomy for import: %w", err)
+    }
+    return selectCategoryURLs(result.Categories, splitCSV(categoryParents), categoryLimit)
+}
+
+func selectCategoryURLs(categories []dia.TaxonomyCategory, parents []string, categoryLimit int) ([]string, error) {
+    wanted := make(map[string]string, len(parents))
+    for _, parent := range parents {
+        normalized := strings.ToLower(strings.Trim(strings.TrimSpace(parent), "/"))
+        if normalized != "" {
+            wanted[normalized] = strings.TrimSpace(parent)
+        }
+    }
+    if len(wanted) == 0 {
+        return nil, fmt.Errorf("at least one non-empty --category-parents value is required")
+    }
+
+    matchedParents := make(map[string]struct{}, len(wanted))
+    urls := make([]string, 0)
+    for _, category := range categories {
+        parent := strings.ToLower(strings.Trim(strings.TrimSpace(category.ParentPath), "/"))
+        if _, ok := wanted[parent]; !ok {
+            continue
+        }
+        url := strings.TrimSpace(category.URL)
+        if url == "" {
+            continue
+        }
+        matchedParents[parent] = struct{}{}
+        urls = append(urls, url)
+    }
+
+    missing := make([]string, 0)
+    for normalized, original := range wanted {
+        if _, ok := matchedParents[normalized]; !ok {
+            missing = append(missing, original)
+        }
+    }
+    if len(missing) > 0 {
+        sort.Strings(missing)
+        return nil, fmt.Errorf("DIA taxonomy parent path(s) not found: %s", strings.Join(missing, ", "))
+    }
+    if len(urls) == 0 {
+        return nil, fmt.Errorf("no DIA categories found for requested parent paths")
+    }
+    if categoryLimit > 0 && len(urls) > categoryLimit {
+        return nil, fmt.Errorf("resolved %d DIA categories, exceeding --category-limit=%d; narrow --category-parents or raise the limit explicitly", len(urls), categoryLimit)
+    }
+    return urls, nil
 }
 
 func runDry(ctx context.Context, provider importer.Provider, postalCode string) {
