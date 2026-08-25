@@ -136,6 +136,22 @@ func TestSuggestMatchesFreshDIAVegetablesBySourceCategory(t *testing.T) {
     }
 }
 
+func TestSuggestLeavesSpringOnionUnmatchedFromGenericCebolla(t *testing.T) {
+    product := catalog.Product{
+        SupermarketID:        "dia",
+        ExternalID:           "spring-onion",
+        Name:                 "Cebolla tierna unidad",
+        SourceCategoryID:     "L2022",
+        ItemType:             "food_ingredient",
+        NormalizedCategory:   "food.produce.vegetable",
+        RecipeCompatible:     true,
+        ClassificationStatus: "classified",
+    }
+    if matches := Suggest(product); len(matches) != 0 {
+        t.Fatalf("spring onion unexpectedly collapsed into generic cebolla: %#v", matches)
+    }
+}
+
 func TestSuggestVegetableRequiresVerifiedFreshCategory(t *testing.T) {
     product := catalog.Product{
         SupermarketID:        "dia",
