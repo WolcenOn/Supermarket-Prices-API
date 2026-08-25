@@ -104,3 +104,29 @@ func TestParseRenderedSnapshotAcceptsLiveDIANonBreakingSpaces(t *testing.T) {
         t.Fatalf("unexpected live-format prices %+v", p)
     }
 }
+
+func TestParseRenderedSnapshotIgnoresPriceHighlightLabel(t *testing.T) {
+    snapshot := `
+condition :: true index::0 initialLoadedItems::10 item.isVisible:: item.type:: item.sku_id::248458 item.data::
+Precio destacado
+Tomate rama 2 Kg aprox.
+2,49 €
+(1,25 €/KILO)
+[Button: Añadir]
+`
+
+    products := ParseRenderedSnapshot(snapshot, "28001", time.Time{})
+    if len(products) != 1 {
+        t.Fatalf("expected 1 product, got %d", len(products))
+    }
+    p := products[0]
+    if p.ExternalID != "248458" {
+        t.Fatalf("unexpected sku %q", p.ExternalID)
+    }
+    if p.Name != "Tomate rama 2 Kg aprox." {
+        t.Fatalf("expected real product name after UI label, got %q", p.Name)
+    }
+    if p.RegularPrice != 2.49 || p.PricePerUnit != 1.25 || p.PriceUnit != "KILO" {
+        t.Fatalf("unexpected prices %+v", p)
+    }
+}
