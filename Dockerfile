@@ -14,7 +14,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/prices-api ./cmd/api \
     && CGO_ENABLED=0 GOOS=linux go build -o /out/review-canonical-alias ./cmd/review-canonical-alias \
     && CGO_ENABLED=0 GOOS=linux go build -o /out/validate-canonical-curation ./cmd/validate-canonical-curation \
     && CGO_ENABLED=0 GOOS=linux go build -o /out/curate-canonical-alias ./cmd/curate-canonical-alias \
-    && CGO_ENABLED=0 GOOS=linux go build -o /out/generate-canonical-matches ./cmd/generate-canonical-matches
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/generate-canonical-matches ./cmd/generate-canonical-matches \
+    && CGO_ENABLED=0 GOOS=linux go build -o /out/discover-dia-taxonomy ./cmd/discover-dia-taxonomy
 
 FROM alpine:3.21
 RUN adduser -D -H appuser
@@ -29,5 +30,6 @@ COPY --from=build /out/review-canonical-alias /usr/local/bin/review-canonical-al
 COPY --from=build /out/validate-canonical-curation /usr/local/bin/validate-canonical-curation
 COPY --from=build /out/curate-canonical-alias /usr/local/bin/curate-canonical-alias
 COPY --from=build /out/generate-canonical-matches /usr/local/bin/generate-canonical-matches
+COPY --from=build /out/discover-dia-taxonomy /usr/local/bin/discover-dia-taxonomy
 EXPOSE 8080
 CMD ["prices-api"]
