@@ -135,6 +135,9 @@ func isLikelyProductName(line string) bool {
     if line == "" || strings.HasPrefix(line, "[") || strings.HasPrefix(line, "(") {
         return false
     }
+    if lower == "precio destacado" {
+        return false
+    }
     if strings.Contains(lower, "condition ::") || strings.Contains(lower, "oferta") ||
         strings.Contains(lower, "sin gluten") || strings.Contains(lower, "sin lactosa") ||
         strings.Contains(lower, "air fryer") || strings.Contains(lower, "novedad") ||
