@@ -103,3 +103,50 @@ func TestResolveCategoryURLsKeepsExplicitCategories(t *testing.T) {
         t.Fatalf("unexpected explicit URLs: %#v", urls)
     }
 }
+
+func TestBuildDryRunSummaryCompactsProductsByCategory(t *testing.T) {
+    products := []catalog.Product{
+        {
+            ExternalID: "1", Name: "Tomate pera 1 Kg", Price: 1.99,
+            SourceCategoryID: "L2023", SourceCategoryName: "Tomates pimientos y pepinos", SourceCategoryPath: "verduras/tomates-pimientos-y-pepinos/c/L2023",
+            ItemType: "food_ingredient", ClassificationStatus: "classified", RecipeCompatible: true,
+        },
+        {
+            ExternalID: "2", Name: "Pepino 1 ud", Price: 0.79,
+            SourceCategoryID: "L2023", SourceCategoryName: "Tomates pimientos y pepinos", SourceCategoryPath: "verduras/tomates-pimientos-y-pepinos/c/L2023",
+            ItemType: "food_ingredient", ClassificationStatus: "classified", RecipeCompatible: true,
+        },
+        {
+            ExternalID: "3", Name: "Pimiento rojo 500 g", Price: 1.49,
+            SourceCategoryID: "L2023", SourceCategoryName: "Tomates pimientos y pepinos", SourceCategoryPath: "verduras/tomates-pimientos-y-pepinos/c/L2023",
+            ItemType: "food_ingredient", ClassificationStatus: "classified", RecipeCompatible: true,
+        },
+        {
+            ExternalID: "4", Name: "Tomate cherry 250 g", Price: 1.29,
+            SourceCategoryID: "L2023", SourceCategoryName: "Tomates pimientos y pepinos", SourceCategoryPath: "verduras/tomates-pimientos-y-pepinos/c/L2023",
+            ItemType: "food_ingredient", ClassificationStatus: "classified", RecipeCompatible: true,
+        },
+        {
+            ExternalID: "5", Name: "Maiz dulce conserva 210 g", Price: 1.25,
+            SourceCategoryID: "L2026", SourceCategoryName: "Conservas de verduras", SourceCategoryPath: "verduras/conservas-de-verduras/c/L2026",
+            ItemType: "other", ClassificationStatus: "pending", RecipeCompatible: false,
+        },
+    }
+
+    got := buildDryRunSummary(importer.Result{}, products)
+    if got.ItemCount != 5 || got.ClassifiedCount != 4 || got.PendingCount != 1 || got.RecipeCompatibleCount != 4 {
+        t.Fatalf("unexpected totals: %+v", got)
+    }
+    if got.ItemTypes["food_ingredient"] != 4 || got.ItemTypes["other"] != 1 {
+        t.Fatalf("unexpected item types: %#v", got.ItemTypes)
+    }
+    if len(got.Categories) != 2 {
+        t.Fatalf("got %d category summaries, want 2: %#v", len(got.Categories), got.Categories)
+    }
+    if got.Categories[0].ID != "L2026" || got.Categories[1].ID != "L2023" {
+        t.Fatalf("categories not sorted by path: %#v", got.Categories)
+    }
+    if len(got.Categories[1].Samples) != dryRunSamplesPerCategory {
+        t.Fatalf("got %d samples, want capped %d", len(got.Categories[1].Samples), dryRunSamplesPerCategory)
+    }
+}
