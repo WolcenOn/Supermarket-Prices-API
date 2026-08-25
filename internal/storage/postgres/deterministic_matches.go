@@ -33,6 +33,8 @@ func LoadDeterministicMatchProducts(ctx context.Context, db *sql.DB, supermarket
         category = "food.pantry.cereal.rice"
     case "milk":
         category = "food.dairy.milk"
+    case "vegetables":
+        category = "food.produce.vegetable"
     default:
         return nil, fmt.Errorf("postgres deterministic matches: unsupported family %q", family)
     }
