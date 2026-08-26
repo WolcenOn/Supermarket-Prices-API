@@ -8,12 +8,14 @@ import (
 
 var (
     multipackRE = regexp.MustCompile(`(?i)([0-9]+(?:[\.,][0-9]+)?)\s*[x×]\s*([0-9]+(?:[\.,][0-9]+)?)\s*(kg|g|l|ml|ud|uds|unidad|unidades)\b`)
-    simplePackRE = regexp.MustCompile(`(?i)([0-9]+(?:[\.,][0-9]+)?)\s*(kg|g|l|ml|ud|uds|unidad|unidades)\s*$`)
+    simplePackRE = regexp.MustCompile(`(?i)([0-9]+(?:[\.,][0-9]+)?)\s*(kg|g|l|ml|ud|uds|unidad|unidades)(?:\s+aprox\.?)?\s*$`)
 )
 
 // InferPackageSize extracts a total package amount and unit from a product name.
 // For multipacks such as "2 x 125 g", the returned amount is the total package
 // quantity (250 g), which is the useful value for basket/package calculations.
+// Approximate DIA weights such as "900 g aprox." are treated as the estimated
+// commercial-unit size rather than as arbitrary variable-weight quantities.
 func InferPackageSize(name string) (amount float64, unit string, ok bool) {
     name = strings.TrimSpace(name)
     if name == "" {
