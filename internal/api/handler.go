@@ -232,6 +232,10 @@ func (h *Handler) ingredientQuote(w http.ResponseWriter, r *http.Request) {
     quotes := make([]catalog.PurchaseQuote, 0, len(products))
     skipped := 0
     for _, item := range products {
+        if !item.Product.Available {
+            skipped++
+            continue
+        }
         quote, quoteErr := catalog.QuotePurchase(item.Product, amount, unit)
         if quoteErr != nil {
             skipped++
