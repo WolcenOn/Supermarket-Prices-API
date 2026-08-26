@@ -61,6 +61,17 @@ func Normalize(raw RawProduct) (catalog.Product, error) {
         }
     }
 
+    priceUnit := catalog.NormalizePackageUnit(raw.PriceUnit)
+    variableWeight := raw.VariableWeight || inferVariableWeight(raw.Name, raw.PricePerUnit, priceUnit, packageAmount, packageUnit)
+    if variableWeight {
+        // Approximate weights shown in a DIA product name are commercial
+        // references, not fixed package sizes. Keep package fields empty so
+        // downstream basket calculations use the requested recipe weight and
+        // the published unit price instead of rounding to a pseudo-package.
+        packageAmount = 0
+        packageUnit = ""
+    }
+
     observedAt := raw.ObservedAt.UTC()
     if raw.ObservedAt.IsZero() {
         observedAt = time.Now().UTC()
@@ -78,9 +89,9 @@ func Normalize(raw RawProduct) (catalog.Product, error) {
         PackageUnit:        packageUnit,
         Price:              raw.RegularPrice,
         PricePerUnit:       raw.PricePerUnit,
-        PriceUnit:          catalog.NormalizePackageUnit(raw.PriceUnit),
+        PriceUnit:          priceUnit,
         PostalCode:         raw.PostalCode,
-        VariableWeight:     raw.VariableWeight,
+        VariableWeight:     variableWeight,
         Available:          raw.Available,
         ObservedAt:         observedAt,
         SourceCategoryID:   strings.TrimSpace(raw.SourceCategoryID),
@@ -102,4 +113,17 @@ func Normalize(raw RawProduct) (catalog.Product, error) {
     }
 
     return product, nil
+}
+
+func inferVariableWeight(name string, pricePerUnit float64, priceUnit string, packageAmount float64, packageUnit string) bool {
+    if pricePerUnit <= 0 || (priceUnit != "kg" && priceUnit != "g") {
+        return false
+    }
+
+    lowerName := strings.ToLower(strings.TrimSpace(name))
+    if strings.Contains(lowerName, "granel") || strings.Contains(lowerName, "aprox") {
+        return true
+    }
+
+    return packageAmount <= 0 || packageUnit == ""
 }
