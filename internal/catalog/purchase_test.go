@@ -24,6 +24,9 @@ func TestQuotePurchasePackagedConvertsUnitsAndRoundsPackages(t *testing.T) {
     if quote.TotalCost != 3.76 {
         t.Fatalf("TotalCost = %v, want 3.76", quote.TotalCost)
     }
+    if quote.Approximate {
+        t.Fatal("packaged quote must not be approximate")
+    }
 }
 
 func TestQuotePurchaseVariableWeight(t *testing.T) {
@@ -41,6 +44,12 @@ func TestQuotePurchaseVariableWeight(t *testing.T) {
     }
     if quote.TotalCost != 1.20 {
         t.Fatalf("TotalCost = %v, want 1.20", quote.TotalCost)
+    }
+    if !quote.Approximate {
+        t.Fatal("variable-weight quote must be approximate")
+    }
+    if quote.PackageCount != 0 || quote.WasteAmount != 0 {
+        t.Fatalf("variable-weight quote must not invent package count or waste: %#v", quote)
     }
 }
 
