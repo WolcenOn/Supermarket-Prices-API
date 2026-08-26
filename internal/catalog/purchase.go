@@ -15,11 +15,13 @@ type PurchaseQuote struct {
     PurchasedUnit   string  `json:"purchasedUnit"`
     WasteAmount     float64 `json:"wasteAmount,omitempty"`
     TotalCost       float64 `json:"totalCost"`
+    Approximate     bool    `json:"approximate,omitempty"`
 }
 
 // QuotePurchase calculates the real checkout cost for a required ingredient
 // amount. Packaged products are rounded up to whole packages. Variable-weight
-// products are costed directly from price per unit.
+// products are costed directly from price per unit and their purchased amount
+// and total cost are estimates until the final weighed amount is known.
 func QuotePurchase(product Product, requiredAmount float64, requiredUnit string) (PurchaseQuote, error) {
     requiredUnit = normalizeMeasureUnit(requiredUnit)
     if requiredAmount <= 0 {
@@ -47,6 +49,7 @@ func QuotePurchase(product Product, requiredAmount float64, requiredUnit string)
         quote.PurchasedAmount = roundQuantity(amountInPriceUnit)
         quote.PurchasedUnit = priceUnit
         quote.TotalCost = roundMoney(amountInPriceUnit * product.PricePerUnit)
+        quote.Approximate = true
         return quote, nil
     }
 
