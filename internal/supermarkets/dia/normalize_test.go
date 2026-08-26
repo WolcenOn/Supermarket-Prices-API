@@ -40,11 +40,69 @@ func TestNormalizeClubPromotion(t *testing.T) {
     if product.PriceUnit != "kg" {
         t.Fatalf("PriceUnit = %q, want kg", product.PriceUnit)
     }
+    if product.VariableWeight {
+        t.Fatal("fixed packaged product must not be variable weight")
+    }
     if len(product.Promotions) != 1 {
         t.Fatalf("promotions = %d, want 1", len(product.Promotions))
     }
     if product.Promotions[0].Type != "club" || product.Promotions[0].Price != 1.03 {
         t.Fatalf("unexpected promotion: %#v", product.Promotions[0])
+    }
+}
+
+func TestNormalizeInfersVariableWeightProduce(t *testing.T) {
+    tests := []struct {
+        name       string
+        product    string
+        price      float64
+        pricePerKg float64
+    }{
+        {"granel with approximate reference", "Tomate pera granel 900 g aprox.", 2.06, 2.29},
+        {"approximate unit", "Calabacín unidad 650 g aprox.", 1.10, 1.69},
+        {"unit without known weight", "Berenjena unidad", 0.79, 2.63},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            product, err := Normalize(RawProduct{
+                ExternalID:   "produce-1",
+                Name:         tt.product,
+                RegularPrice: tt.price,
+                PricePerUnit: tt.pricePerKg,
+                PriceUnit:    "kg",
+                Available:    true,
+            })
+            if err != nil {
+                t.Fatalf("Normalize() error = %v", err)
+            }
+            if !product.VariableWeight {
+                t.Fatalf("%q must be variable weight", tt.product)
+            }
+            if product.PackageAmount != 0 || product.PackageUnit != "" {
+                t.Fatalf("variable-weight product must not expose fixed package size: %#v", product)
+            }
+        })
+    }
+}
+
+func TestNormalizeKeepsFixedProducePackaged(t *testing.T) {
+    product, err := Normalize(RawProduct{
+        ExternalID:   "produce-2",
+        Name:         "Tomate pera bandeja 500 g",
+        RegularPrice: 1.39,
+        PricePerUnit: 2.78,
+        PriceUnit:    "kg",
+        Available:    true,
+    })
+    if err != nil {
+        t.Fatalf("Normalize() error = %v", err)
+    }
+    if product.VariableWeight {
+        t.Fatal("fixed tray must not be variable weight")
+    }
+    if product.PackageAmount != 500 || product.PackageUnit != "g" {
+        t.Fatalf("unexpected package size: %#v", product)
     }
 }
 
