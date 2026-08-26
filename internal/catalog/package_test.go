@@ -15,6 +15,9 @@ func TestInferPackageSize(t *testing.T) {
         {"multipack", "Vasos de arroz Brillante 2 x 125 g", 250, "g", true},
         {"unicode multiply", "Leche 6 × 1,5 l", 9, "l", true},
         {"millilitres", "Caldo de pollo 750 ml", 750, "ml", true},
+        {"approx kilogram", "Tomate en rama granel 1 Kg aprox.", 1, "kg", true},
+        {"approx grams", "Tomate pera granel 900 g aprox.", 900, "g", true},
+        {"approx unit weight", "Calabacín unidad 650 g aprox.", 650, "g", true},
         {"no package", "Arroz a granel", 0, "", false},
     }
 
