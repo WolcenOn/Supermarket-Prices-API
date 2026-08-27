@@ -1,6 +1,7 @@
 package dia
 
 import (
+    "math"
     "testing"
     "time"
 )
@@ -51,22 +52,44 @@ func TestNormalizeClubPromotion(t *testing.T) {
     }
 }
 
-func TestNormalizeInfersVariableWeightProduce(t *testing.T) {
+func TestNormalizeInfersTrueVariableWeightProduce(t *testing.T) {
+    product, err := Normalize(RawProduct{
+        ExternalID:   "produce-granel",
+        Name:         "Tomate pera granel 900 g aprox.",
+        RegularPrice: 2.06,
+        PricePerUnit: 2.29,
+        PriceUnit:    "kg",
+        Available:    true,
+    })
+    if err != nil {
+        t.Fatalf("Normalize() error = %v", err)
+    }
+    if !product.VariableWeight {
+        t.Fatal("granel product must be variable weight")
+    }
+    if product.PackageAmount != 0 || product.PackageUnit != "" {
+        t.Fatalf("variable-weight product must not expose fixed package size: %#v", product)
+    }
+}
+
+func TestNormalizeKeepsApproximateWholeUnitsAsPackages(t *testing.T) {
     tests := []struct {
-        name       string
-        product    string
-        price      float64
-        pricePerKg float64
+        name          string
+        product       string
+        price         float64
+        pricePerKg    float64
+        wantAmount    float64
+        wantUnit      string
     }{
-        {"granel with approximate reference", "Tomate pera granel 900 g aprox.", 2.06, 2.29},
-        {"approximate unit", "Calabacín unidad 650 g aprox.", 1.10, 1.69},
-        {"unit without known weight", "Berenjena unidad", 0.79, 2.63},
+        {"explicit approximate unit", "Calabacín unidad 650 g aprox.", 1.10, 1.69, 650, "g"},
+        {"explicit approximate piece", "Calabaza 1.6 Kg aprox.", 3.18, 1.99, 1.6, "kg"},
+        {"unit inferred from price ratio", "Berenjena unidad", 0.79, 2.63, 0.79 / 2.63, "kg"},
     }
 
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             product, err := Normalize(RawProduct{
-                ExternalID:   "produce-1",
+                ExternalID:   "produce-unit",
                 Name:         tt.product,
                 RegularPrice: tt.price,
                 PricePerUnit: tt.pricePerKg,
@@ -76,11 +99,11 @@ func TestNormalizeInfersVariableWeightProduce(t *testing.T) {
             if err != nil {
                 t.Fatalf("Normalize() error = %v", err)
             }
-            if !product.VariableWeight {
-                t.Fatalf("%q must be variable weight", tt.product)
+            if product.VariableWeight {
+                t.Fatalf("%q is a whole approximate unit, not granel", tt.product)
             }
-            if product.PackageAmount != 0 || product.PackageUnit != "" {
-                t.Fatalf("variable-weight product must not expose fixed package size: %#v", product)
+            if product.PackageUnit != tt.wantUnit || math.Abs(product.PackageAmount-tt.wantAmount) > 0.001 {
+                t.Fatalf("unexpected approximate package for %q: %#v", tt.product, product)
             }
         })
     }
