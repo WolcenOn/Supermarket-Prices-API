@@ -29,9 +29,38 @@ func TestQuotePurchasePackagedConvertsUnitsAndRoundsPackages(t *testing.T) {
     }
 }
 
+func TestQuotePurchaseApproximateWholeUnitRoundsToPiece(t *testing.T) {
+    quote, err := QuotePurchase(Product{
+        Name:          "Calabaza 1.6 Kg aprox.",
+        PackageAmount: 1.6,
+        PackageUnit:   "kg",
+        Price:         3.18,
+        PricePerUnit:  1.99,
+        PriceUnit:     "kg",
+    }, 120, "g")
+    if err != nil {
+        t.Fatalf("QuotePurchase() error = %v", err)
+    }
+    if quote.PackageCount != 1 {
+        t.Fatalf("PackageCount = %d, want 1", quote.PackageCount)
+    }
+    if quote.PurchasedAmount != 1.6 || quote.PurchasedUnit != "kg" {
+        t.Fatalf("unexpected purchased amount: %#v", quote)
+    }
+    if quote.WasteAmount != 1.48 {
+        t.Fatalf("WasteAmount = %v, want nominal 1.48", quote.WasteAmount)
+    }
+    if quote.TotalCost != 3.18 {
+        t.Fatalf("TotalCost = %v, want 3.18", quote.TotalCost)
+    }
+    if !quote.Approximate {
+        t.Fatal("approximate whole-unit quote must be marked approximate")
+    }
+}
+
 func TestQuotePurchaseVariableWeight(t *testing.T) {
     quote, err := QuotePurchase(Product{
-        Name:           "Tomate pera",
+        Name:           "Tomate pera granel",
         VariableWeight: true,
         PricePerUnit:   2.40,
         PriceUnit:      "kg",
