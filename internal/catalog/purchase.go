@@ -73,7 +73,23 @@ func QuotePurchase(product Product, requiredAmount float64, requiredUnit string)
     quote.PurchasedUnit = packageUnit
     quote.WasteAmount = roundQuantity(math.Max(0, purchased-requiredInPackageUnit))
     quote.TotalCost = roundMoney(float64(packages) * product.Price)
+    quote.Approximate = isApproximateWholeUnit(product)
     return quote, nil
+}
+
+func isApproximateWholeUnit(product Product) bool {
+    if product.VariableWeight || product.PackageAmount <= 0 || normalizeMeasureUnit(product.PackageUnit) == "" {
+        return false
+    }
+    lowerName := strings.ToLower(strings.TrimSpace(product.Name))
+    if strings.Contains(lowerName, "aprox") {
+        return true
+    }
+    if strings.Contains(lowerName, "unidad") && product.PricePerUnit > 0 {
+        priceUnit := normalizeMeasureUnit(product.PriceUnit)
+        return priceUnit == "kg" || priceUnit == "g"
+    }
+    return false
 }
 
 func convertMeasure(amount float64, from, to string) (float64, error) {
