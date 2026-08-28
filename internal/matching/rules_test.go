@@ -23,8 +23,8 @@ func TestSuggestMatchesRawRiceVariants(t *testing.T) {
         if len(matches) != 1 || matches[0].CanonicalIngredientID != tc.want {
             t.Fatalf("%q: got %#v, want %s", tc.name, matches, tc.want)
         }
-        if matches[0].Source != SourceRulesV2 {
-            t.Fatalf("%q: source=%q, want %q", tc.name, matches[0].Source, SourceRulesV2)
+        if matches[0].Source != SourceRulesV3 {
+            t.Fatalf("%q: source=%q, want %q", tc.name, matches[0].Source, SourceRulesV3)
         }
     }
 }
@@ -98,21 +98,27 @@ func TestSuggestLeavesSpecialMilkUnmatched(t *testing.T) {
     }
 }
 
-func TestSuggestMatchesFreshDIAVegetablesBySourceCategory(t *testing.T) {
+func TestSuggestMatchesFreshDIAProduceBySourceCategory(t *testing.T) {
     cases := []struct {
-        categoryID string
-        name       string
-        want       string
+        categoryID        string
+        normalizedCategory string
+        name              string
+        want              string
     }{
-        {"L2022", "Cebolla dulce granel 1 Kg aprox.", "cebolla"},
-        {"L2023", "Tomate pera bandeja 500 g", "tomate"},
-        {"L2023", "Pimiento verde freír granel 500 g aprox.", "pimiento"},
-        {"L2023", "Pepino granel 1 Kg aprox.", "pepino"},
-        {"L2027", "Brotes tiernos bandeja 100 g", "brotes_tiernos"},
-        {"L2028", "Patatas para freír 2 Kg", "patata"},
-        {"L2181", "Calabaza cortada a trozos al vacío 500 g", "calabaza"},
-        {"L2029", "Champiñón laminado bandeja 250 g", "champinon"},
-        {"L2029", "Seta ostra bandeja 200 g", "seta"},
+        {"L2022", "food.produce.vegetable", "Cebolla dulce granel 1 Kg aprox.", "cebolla"},
+        {"L2022", "food.produce.vegetable", "Cebolla morada malla 500 g", "cebolla_morada"},
+        {"L2023", "food.produce.vegetable", "Tomate pera bandeja 500 g", "tomate"},
+        {"L2023", "food.produce.vegetable", "Tomates cherry bandeja 400 g", "tomate_cherry"},
+        {"L2023", "food.produce.vegetable", "Tomate cherry pera bandeja 250 g", "tomate_cherry"},
+        {"L2023", "food.produce.vegetable", "Pimiento rojo unidad 350 g aprox.", "pimiento_rojo"},
+        {"L2023", "food.produce.vegetable", "Pimiento verde freír granel 500 g aprox.", "pimiento"},
+        {"L2023", "food.produce.vegetable", "Pepino granel 1 Kg aprox.", "pepino"},
+        {"L2027", "food.produce.vegetable", "Brotes tiernos bandeja 100 g", "brotes_tiernos"},
+        {"L2027", "food.produce.vegetable", "Canónigos Dia Vegecampo 70 g", "canonigos"},
+        {"L2028", "food.produce.vegetable", "Patatas para freír 2 Kg", "patata"},
+        {"L2181", "food.produce.vegetable", "Calabaza cortada a trozos al vacío 500 g", "calabaza"},
+        {"L2029", "food.produce.mushroom", "Champiñón laminado bandeja 250 g", "champinon"},
+        {"L2029", "food.produce.mushroom", "Seta ostra bandeja 200 g", "seta"},
     }
 
     for _, tc := range cases {
@@ -122,7 +128,7 @@ func TestSuggestMatchesFreshDIAVegetablesBySourceCategory(t *testing.T) {
             Name:                 tc.name,
             SourceCategoryID:     tc.categoryID,
             ItemType:             "food_ingredient",
-            NormalizedCategory:   "food.produce.vegetable",
+            NormalizedCategory:   tc.normalizedCategory,
             RecipeCompatible:     true,
             ClassificationStatus: "classified",
         }
@@ -130,7 +136,7 @@ func TestSuggestMatchesFreshDIAVegetablesBySourceCategory(t *testing.T) {
         if len(matches) != 1 || matches[0].CanonicalIngredientID != tc.want {
             t.Fatalf("%s %q: got %#v, want %s", tc.categoryID, tc.name, matches, tc.want)
         }
-        if matches[0].Score != 0.99 || matches[0].Status != "automatic" {
+        if matches[0].Score != 0.99 || matches[0].Status != "automatic" || matches[0].Source != SourceRulesV3 {
             t.Fatalf("%q: unexpected match metadata %#v", tc.name, matches[0])
         }
     }
@@ -152,6 +158,22 @@ func TestSuggestLeavesSpringOnionUnmatchedFromGenericCebolla(t *testing.T) {
     }
 }
 
+func TestSuggestRejectsMicrowaveProduceEvenUnderFreshCategoryID(t *testing.T) {
+    product := catalog.Product{
+        SupermarketID:        "dia",
+        ExternalID:           "microwave-broccoli",
+        Name:                 "Brócoli para microondas Florette 225 g",
+        SourceCategoryID:     "L2024",
+        ItemType:             "food_ingredient",
+        NormalizedCategory:   "food.produce.vegetable",
+        RecipeCompatible:     true,
+        ClassificationStatus: "classified",
+    }
+    if matches := Suggest(product); len(matches) != 0 {
+        t.Fatalf("microwave produce unexpectedly matched: %#v", matches)
+    }
+}
+
 func TestSuggestVegetableRequiresVerifiedFreshCategory(t *testing.T) {
     product := catalog.Product{
         SupermarketID:        "dia",
@@ -168,19 +190,33 @@ func TestSuggestVegetableRequiresVerifiedFreshCategory(t *testing.T) {
     }
 }
 
-func TestSuggestVegetableRequiresProduceClassification(t *testing.T) {
-    product := catalog.Product{
-        SupermarketID:        "dia",
-        ExternalID:           "wrong-classification",
-        Name:                 "Tomate pera bandeja 500 g",
-        SourceCategoryID:     "L2023",
-        ItemType:             "food_ingredient",
-        NormalizedCategory:   "food.prepared",
-        RecipeCompatible:     true,
-        ClassificationStatus: "classified",
+func TestSuggestProduceRequiresExpectedNormalizedCategory(t *testing.T) {
+    cases := []catalog.Product{
+        {
+            SupermarketID:        "dia",
+            ExternalID:           "wrong-veg-classification",
+            Name:                 "Tomate pera bandeja 500 g",
+            SourceCategoryID:     "L2023",
+            ItemType:             "food_ingredient",
+            NormalizedCategory:   "food.prepared",
+            RecipeCompatible:     true,
+            ClassificationStatus: "classified",
+        },
+        {
+            SupermarketID:        "dia",
+            ExternalID:           "wrong-mushroom-classification",
+            Name:                 "Champiñón entero bandeja 250 g",
+            SourceCategoryID:     "L2029",
+            ItemType:             "food_ingredient",
+            NormalizedCategory:   "food.produce.vegetable",
+            RecipeCompatible:     true,
+            ClassificationStatus: "classified",
+        },
     }
-    if matches := Suggest(product); len(matches) != 0 {
-        t.Fatalf("wrong normalized category unexpectedly matched: %#v", matches)
+    for _, product := range cases {
+        if matches := Suggest(product); len(matches) != 0 {
+            t.Fatalf("%q wrong normalized category unexpectedly matched: %#v", product.Name, matches)
+        }
     }
 }
 
