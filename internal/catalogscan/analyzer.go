@@ -3,16 +3,36 @@ package catalogscan
 import (
 	"strings"
 
+	canonicaltext "github.com/WolcenOn/Supermarket-Prices-API/internal/canonical"
 	"github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
 	"github.com/WolcenOn/Supermarket-Prices-API/internal/matching"
 )
 
 const (
 	DecisionAutoMatchCandidate = "auto_match_candidate"
+	DecisionNoCanonical        = "no_canonical"
 	DecisionReview             = "review"
 	DecisionNonRecipe          = "non_recipe"
 	DecisionInvalid            = "invalid"
 )
+
+var simpleProduceSourceCategories = map[string]struct{}{
+	"l2022": {},
+	"l2023": {},
+	"l2024": {},
+	"l2027": {},
+	"l2028": {},
+	"l2029": {},
+	"l2031": {},
+	"l2181": {},
+}
+
+var reviewOnlyProduceTerms = []string{
+	"ensalada",
+	"microondas",
+	"mezcla",
+	"mix ",
+}
 
 type Issue struct {
 	Code     string `json:"code"`
@@ -60,6 +80,8 @@ func Analyze(product catalog.Product) Analysis {
 	decision := DecisionReview
 	if len(candidates) == 1 && candidates[0].Score >= 0.95 {
 		decision = DecisionAutoMatchCandidate
+	} else if len(candidates) == 0 && isSimpleProduceWithoutCanonical(product) {
+		decision = DecisionNoCanonical
 	}
 
 	return Analysis{
@@ -75,6 +97,29 @@ func AnalyzeAll(products []catalog.Product) []Item {
 		items = append(items, Item{Product: product, Analysis: Analyze(product)})
 	}
 	return items
+}
+
+func isSimpleProduceWithoutCanonical(product catalog.Product) bool {
+	if product.ClassificationStatus != "classified" ||
+		!product.RecipeCompatible ||
+		product.ItemType != "food_ingredient" {
+		return false
+	}
+	if product.NormalizedCategory != "food.produce.vegetable" &&
+		product.NormalizedCategory != "food.produce.mushroom" {
+		return false
+	}
+	categoryID := strings.ToLower(strings.TrimSpace(product.SourceCategoryID))
+	if _, ok := simpleProduceSourceCategories[categoryID]; !ok {
+		return false
+	}
+	name := canonicaltext.NormalizeText(product.Name)
+	for _, term := range reviewOnlyProduceTerms {
+		if strings.Contains(name, term) {
+			return false
+		}
+	}
+	return true
 }
 
 func validate(product catalog.Product) []Issue {
