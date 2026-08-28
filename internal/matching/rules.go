@@ -7,7 +7,7 @@ import (
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
 )
 
-const SourceRulesV2 = "rules:v2"
+const SourceRulesV3 = "rules:v3"
 
 type Match struct {
     CanonicalIngredientID string
@@ -32,17 +32,20 @@ var riceRules = []rule{
     {ingredientID: "arroz_integral", phrase: "arroz integral", score: 0.99},
 }
 
-// Vegetable rules are scoped to verified fresh DIA source categories. The
-// category gate is as important as the phrase: the same words may appear in
-// frozen, canned or prepared products, which must not become automatic recipe
-// ingredient matches.
+// Produce rules are scoped to verified DIA source categories. Specific culinary
+// concepts must precede their generic parents so newer canonicals are not
+// collapsed into older broad concepts.
 var vegetableRulesBySourceCategory = map[string][]rule{
     "l2022": {
+        {ingredientID: "cebolla_morada", phrase: "cebolla morada", score: 0.99},
         {ingredientID: "ajo", phrase: "ajo", score: 0.99},
         {ingredientID: "cebolla", phrase: "cebolla", score: 0.99},
         {ingredientID: "puerro", phrase: "puerro", score: 0.99},
     },
     "l2023": {
+        {ingredientID: "tomate_cherry", phrase: "tomates cherry", score: 0.99},
+        {ingredientID: "tomate_cherry", phrase: "tomate cherry", score: 0.99},
+        {ingredientID: "pimiento_rojo", phrase: "pimiento rojo", score: 0.99},
         {ingredientID: "tomate", phrase: "tomate", score: 0.99},
         {ingredientID: "pimiento", phrase: "pimiento", score: 0.99},
         {ingredientID: "pepino", phrase: "pepino", score: 0.99},
@@ -55,6 +58,7 @@ var vegetableRulesBySourceCategory = map[string][]rule{
     },
     "l2027": {
         {ingredientID: "brotes_tiernos", phrase: "brotes tiernos", score: 0.99},
+        {ingredientID: "canonigos", phrase: "canonigos", score: 0.99},
         {ingredientID: "lechuga", phrase: "lechuga", score: 0.99},
         {ingredientID: "espinaca", phrase: "espinaca", score: 0.99},
     },
@@ -71,6 +75,10 @@ var vegetableRulesBySourceCategory = map[string][]rule{
         {ingredientID: "champinon", phrase: "champinon", score: 0.99},
         {ingredientID: "seta", phrase: "seta", score: 0.99},
     },
+}
+
+var produceMatchExclusionTerms = []string{
+    "microondas",
 }
 
 var preparedRiceTerms = []string{
@@ -115,10 +123,6 @@ var specialMilkTerms = []string{
 // products intentionally remain unmatched for later review instead of forcing a
 // potentially wrong canonical ingredient.
 func Suggest(product catalog.Product) []Match {
-    // New imports are classified before matching. A classified non-recipe item
-    // must never be promoted to a canonical recipe ingredient just because its
-    // commercial name contains the same words. Legacy/unclassified products
-    // keep the previous matching behavior until they are re-imported.
     if product.ClassificationStatus != "" && !product.RecipeCompatible {
         return nil
     }
@@ -141,13 +145,9 @@ func Suggest(product catalog.Product) []Match {
 }
 
 func suggestVegetable(product catalog.Product, name string) (Match, bool) {
-    // Unlike the older rice fallback, vegetable matching is intentionally
-    // classification-dependent. This prevents names from unrelated legacy
-    // products from becoming automatic produce matches.
     if product.ClassificationStatus != "classified" ||
         !product.RecipeCompatible ||
-        product.ItemType != "food_ingredient" ||
-        product.NormalizedCategory != "food.produce.vegetable" {
+        product.ItemType != "food_ingredient" {
         return Match{}, false
     }
 
@@ -157,10 +157,25 @@ func suggestVegetable(product catalog.Product, name string) (Match, bool) {
         return Match{}, false
     }
 
+    expectedCategory := "food.produce.vegetable"
+    if categoryID == "l2029" {
+        expectedCategory = "food.produce.mushroom"
+    }
+    if product.NormalizedCategory != expectedCategory {
+        return Match{}, false
+    }
+
     // DIA's "cebolla tierna" is a distinct culinary concept (spring onion),
     // so keep it unmatched until it has its own canonical instead of collapsing
     // it into the generic bulb-onion concept.
     if categoryID == "l2022" && strings.Contains(name, "cebolla tierna") {
+        return Match{}, false
+    }
+
+    // Category metadata is not sufficient on its own. Prepared microwave
+    // products have appeared under otherwise fresh category identifiers and
+    // must remain review-only.
+    if containsAny(name, produceMatchExclusionTerms) {
         return Match{}, false
     }
 
@@ -227,7 +242,7 @@ func newMatch(product catalog.Product, canonicalID string, score float64) Match 
         ExternalID:            product.ExternalID,
         Score:                 score,
         Status:                "automatic",
-        Source:                SourceRulesV2,
+        Source:                SourceRulesV3,
     }
 }
 
