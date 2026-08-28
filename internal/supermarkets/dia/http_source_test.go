@@ -1,6 +1,10 @@
 package dia
 
 import (
+    "context"
+    "errors"
+    "net/http"
+    "net/http/httptest"
     "strings"
     "testing"
     "time"
@@ -41,5 +45,29 @@ func TestNewHTTPSourceUsesBrowserCompatibleUserAgent(t *testing.T) {
     source := NewHTTPSource(nil)
     if !strings.Contains(source.UserAgent, "Mozilla/5.0") || !strings.Contains(source.UserAgent, "Supermarket-Prices-API") {
         t.Fatalf("unexpected user agent: %q", source.UserAgent)
+    }
+}
+
+func TestHTTPSourceReturnsTypedStatusError(t *testing.T) {
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+        http.NotFound(w, nil)
+    }))
+    defer server.Close()
+
+    source := NewHTTPSource([]string{server.URL + "/category"})
+    _, err := source.Search(context.Background(), "catalog-scan", "28001")
+    if err == nil {
+        t.Fatal("expected HTTP status error")
+    }
+
+    var statusErr *HTTPStatusError
+    if !errors.As(err, &statusErr) {
+        t.Fatalf("expected HTTPStatusError, got %T: %v", err, err)
+    }
+    if statusErr.StatusCode != http.StatusNotFound {
+        t.Fatalf("status = %d, want %d", statusErr.StatusCode, http.StatusNotFound)
+    }
+    if statusErr.URL != server.URL+"/category" {
+        t.Fatalf("url = %q, want %q", statusErr.URL, server.URL+"/category")
     }
 }

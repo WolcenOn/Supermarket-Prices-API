@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -39,11 +41,21 @@ func (s *collectingSink) SaveProducts(_ context.Context, products []catalog.Prod
 	return nil
 }
 
+type categorySkip struct {
+	ID     string `json:"id"`
+	Path   string `json:"path"`
+	URL    string `json:"url"`
+	Reason string `json:"reason"`
+}
+
 type summary struct {
 	Mode                 string         `json:"mode"`
 	Supermarket          string         `json:"supermarket"`
 	TaxonomyCategories   int            `json:"taxonomyCategories"`
 	CategoriesScanned    int            `json:"categoriesScanned"`
+	CategoriesSkipped    int            `json:"categoriesSkipped"`
+	CategoryErrors       map[string]int `json:"categoryErrors"`
+	SkippedCategories    []categorySkip `json:"skippedCategories,omitempty"`
 	UniqueProducts       int            `json:"uniqueProducts"`
 	DuplicateOccurrences int            `json:"duplicateOccurrences"`
 	Decisions            map[string]int `json:"decisions"`
@@ -101,22 +113,41 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	urls := make([]string, 0, len(categories))
-	for _, category := range categories {
-		urls = append(urls, category.URL)
-	}
-	log.Printf("catalog scan is read-only: scanning %d DIA categories; no database writes will be performed", len(urls))
+	log.Printf("catalog scan is read-only: scanning %d DIA categories; no database writes will be performed", len(categories))
 
-	source := dia.NewHTTPSource(urls)
-	provider := dia.NewProvider(source)
 	sink := &collectingSink{}
-	result, err := importer.Run(ctx, provider, sink, "catalog-scan", strings.TrimSpace(*postalCode))
-	if err != nil {
-		log.Fatal(err)
+	scannedCategories := 0
+	skippedCategories := make([]categorySkip, 0)
+	categoryErrors := make(map[string]int)
+
+	for _, category := range categories {
+		source := dia.NewHTTPSource([]string{category.URL})
+		provider := dia.NewProvider(source)
+		_, err := importer.Run(ctx, provider, sink, "catalog-scan", strings.TrimSpace(*postalCode))
+		if err != nil {
+			if isMissingCategoryError(err) {
+				categoryErrors["http_404"]++
+				skippedCategories = append(skippedCategories, categorySkip{
+					ID:     strings.TrimSpace(category.ID),
+					Path:   strings.TrimSpace(category.Path),
+					URL:    strings.TrimSpace(category.URL),
+					Reason: "http_404",
+				})
+				log.Printf("catalog scan: skipping DIA category %s (%s): HTTP 404", category.ID, category.Path)
+				continue
+			}
+			log.Fatal(err)
+		}
+		scannedCategories++
 	}
 
+	result := importer.Result{
+		Supermarket: "dia",
+		Found:       len(sink.products),
+		Saved:       len(sink.products),
+	}
 	items := catalogscan.AnalyzeAll(sink.products)
-	reportSummary := buildSummary(taxonomy, categories, sink, result, items)
+	reportSummary := buildSummary(taxonomy, scannedCategories, skippedCategories, categoryErrors, sink, result, items)
 
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
@@ -129,6 +160,11 @@ func main() {
 	if err := encoder.Encode(fullReport{Summary: reportSummary, Items: items}); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func isMissingCategoryError(err error) bool {
+	var statusErr *dia.HTTPStatusError
+	return errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound
 }
 
 func selectCategories(categories []dia.TaxonomyCategory, prefixes []string, all, includeParents bool, limit int) ([]dia.TaxonomyCategory, error) {
@@ -226,12 +262,15 @@ func splitCSV(value string) []string {
 	return out
 }
 
-func buildSummary(taxonomy dia.TaxonomyResult, categories []dia.TaxonomyCategory, sink *collectingSink, result importer.Result, items []catalogscan.Item) summary {
+func buildSummary(taxonomy dia.TaxonomyResult, scannedCategories int, skippedCategories []categorySkip, categoryErrors map[string]int, sink *collectingSink, result importer.Result, items []catalogscan.Item) summary {
 	out := summary{
 		Mode:                 "read-only-audit",
 		Supermarket:          "dia",
 		TaxonomyCategories:   len(taxonomy.Categories),
-		CategoriesScanned:    len(categories),
+		CategoriesScanned:    scannedCategories,
+		CategoriesSkipped:    len(skippedCategories),
+		CategoryErrors:       categoryErrors,
+		SkippedCategories:    skippedCategories,
 		UniqueProducts:       len(sink.products),
 		DuplicateOccurrences: sink.duplicates,
 		Decisions:            make(map[string]int),
