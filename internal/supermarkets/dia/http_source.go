@@ -21,6 +21,18 @@ var (
 
 const defaultBrowserUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Supermarket-Prices-API/0.1"
 
+// HTTPStatusError identifies a non-success response from a DIA catalog page.
+// Callers that need best-effort auditing can inspect the status code without
+// relying on error-string parsing; regular import callers still receive an error.
+type HTTPStatusError struct {
+    URL        string
+    StatusCode int
+}
+
+func (e *HTTPStatusError) Error() string {
+    return fmt.Sprintf("dia: fetch %s: unexpected status %d", e.URL, e.StatusCode)
+}
+
 // HTTPSource fetches a curated set of public DIA category/listing pages.
 // It deliberately does not call DIA search routes. Search is performed later
 // against our own persisted catalog.
@@ -87,7 +99,7 @@ func (s *HTTPSource) Search(ctx context.Context, query, postalCode string) ([]Ra
             return nil, fmt.Errorf("dia: read %s: %w", categoryURL, readErr)
         }
         if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-            return nil, fmt.Errorf("dia: fetch %s: unexpected status %d", categoryURL, resp.StatusCode)
+            return nil, &HTTPStatusError{URL: categoryURL, StatusCode: resp.StatusCode}
         }
 
         document := string(body)
