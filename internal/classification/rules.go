@@ -6,7 +6,10 @@ import (
     "github.com/WolcenOn/Supermarket-Prices-API/internal/catalog"
 )
 
-const SourceRulesV2 = "rules:v2"
+const (
+    SourceRulesV2 = "rules:v2"
+    SourceRulesV3 = "rules:v3"
+)
 
 type Result struct {
     ItemType           string
@@ -81,6 +84,13 @@ var freshVegetableCategoryIDs = map[string]struct{}{
     "l2181": {}, // Calabacin calabaza y berenjena
 }
 
+var nonFoodSourceRoots = []string{
+    "higiene-y-cuidado-del-cuerpo",
+    "cabello-y-perfumeria",
+    "mascotas",
+    "salud-y-parafarmacia",
+}
+
 // Classify assigns a conservative product type before canonical matching.
 // Source taxonomy is preferred when available, while product-name rules are
 // used as a fallback. Unknown products stay pending instead of being forced
@@ -96,6 +106,10 @@ func Classify(product catalog.Product) Result {
 
     if containsAny(combined, preparedTerms) {
         return classified("prepared_food", "food.prepared", false, 0.99)
+    }
+
+    if isNonFoodSourceCategory(product) {
+        return classified("non_food", "non_food", false, 0.99)
     }
 
     if containsAny(combined, householdTerms) {
@@ -128,7 +142,7 @@ func Classify(product catalog.Product) Result {
         RecipeCompatible:   false,
         Status:             "pending",
         Score:              0,
-        Source:             SourceRulesV2,
+        Source:             SourceRulesV3,
     }
 }
 
@@ -153,8 +167,18 @@ func classified(itemType, category string, recipeCompatible bool, score float64)
         RecipeCompatible:   recipeCompatible,
         Status:             "classified",
         Score:              score,
-        Source:             SourceRulesV2,
+        Source:             SourceRulesV3,
     }
+}
+
+func isNonFoodSourceCategory(product catalog.Product) bool {
+    path := strings.ToLower(strings.Trim(strings.TrimSpace(product.SourceCategoryPath), "/"))
+    for _, root := range nonFoodSourceRoots {
+        if path == root || strings.HasPrefix(path, root+"/") {
+            return true
+        }
+    }
+    return false
 }
 
 func isMilkSourceCategory(product catalog.Product) bool {
