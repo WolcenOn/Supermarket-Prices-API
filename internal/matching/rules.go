@@ -81,6 +81,23 @@ var produceMatchExclusionTerms = []string{
     "microondas",
 }
 
+var chickenBreastMatchExclusionTerms = []string{
+    "empanad",
+    "rellen",
+    "marinad",
+    "adobad",
+    "asado",
+    "brasead",
+    "cocid",
+    "burger",
+    "hamburgues",
+    "longaniza",
+    "salchicha",
+    "nugget",
+    "brocheta",
+    "pincho",
+}
+
 var preparedRiceTerms = []string{
     "tres delicias",
     "al punto",
@@ -135,6 +152,9 @@ func Suggest(product catalog.Product) []Match {
     if match, ok := suggestVegetable(product, name); ok {
         return []Match{match}
     }
+    if match, ok := suggestChickenBreast(product, name); ok {
+        return []Match{match}
+    }
     if match, ok := suggestMilk(product, name); ok {
         return []Match{match}
     }
@@ -185,6 +205,19 @@ func suggestVegetable(product catalog.Product, name string) (Match, bool) {
         }
     }
     return Match{}, false
+}
+
+func suggestChickenBreast(product catalog.Product, name string) (Match, bool) {
+    if product.ClassificationStatus != "classified" ||
+        !product.RecipeCompatible ||
+        product.ItemType != "food_ingredient" ||
+        strings.ToLower(strings.TrimSpace(product.SourceCategoryID)) != "l2202" ||
+        product.NormalizedCategory != "food.meat.chicken_breast" ||
+        !strings.Contains(name, "pechuga") ||
+        containsAny(name, chickenBreastMatchExclusionTerms) {
+        return Match{}, false
+    }
+    return newMatch(product, "pechuga_pollo", 0.99), true
 }
 
 func suggestRice(product catalog.Product, name string) (Match, bool) {
