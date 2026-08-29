@@ -24,8 +24,8 @@ func (m *MemoryStore) Supermarkets(_ context.Context) ([]Supermarket, error) {
 }
 
 // NormalizeSearchText turns user/product text into accent-insensitive lowercase
-// tokens. Product search uses whole tokens so a query such as "pollo" does not
-// accidentally match "repollo".
+// tokens. Product search uses whole tokens for meaningful terms so a query such
+// as "pollo" does not accidentally match "repollo".
 func NormalizeSearchText(value string) string {
     var builder strings.Builder
     lastSpace := true
@@ -62,11 +62,18 @@ func SearchTextMatches(value, query string) bool {
     if normalizedQuery == "" {
         return true
     }
+    normalizedValue := NormalizeSearchText(value)
     tokens := make(map[string]struct{})
-    for _, token := range strings.Fields(NormalizeSearchText(value)) {
+    for _, token := range strings.Fields(normalizedValue) {
         tokens[token] = struct{}{}
     }
     for _, term := range strings.Fields(normalizedQuery) {
+        if len([]rune(term)) == 1 {
+            if !strings.Contains(normalizedValue, term) {
+                return false
+            }
+            continue
+        }
         if _, ok := tokens[term]; !ok {
             return false
         }
