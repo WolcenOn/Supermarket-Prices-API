@@ -63,6 +63,28 @@ func TestSearchRequiresQuery(t *testing.T) {
     }
 }
 
+func TestSearchRejectsInvalidScope(t *testing.T) {
+    h := NewHandler(catalog.NewMemoryStore(nil))
+    req := httptest.NewRequest(http.MethodGet, "/api/v1/products/search?q=gel&scope=unknown", nil)
+    rec := httptest.NewRecorder()
+
+    h.Routes().ServeHTTP(rec, req)
+
+    if rec.Code != http.StatusBadRequest {
+        t.Fatalf("expected 400, got %d", rec.Code)
+    }
+
+    var body struct {
+        Error string `json:"error"`
+    }
+    if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+        t.Fatal(err)
+    }
+    if body.Error != "invalid_scope" {
+        t.Fatalf("expected invalid_scope, got %q", body.Error)
+    }
+}
+
 func TestSearchReturnsMatchingProduct(t *testing.T) {
     h := NewHandler(catalog.NewMemoryStore(catalog.SeedProducts()))
     req := httptest.NewRequest(http.MethodGet, "/api/v1/products/search?q=arroz&postalCode=28001", nil)
@@ -75,13 +97,98 @@ func TestSearchReturnsMatchingProduct(t *testing.T) {
     }
 
     var body struct {
-        Count int `json:"count"`
+        Scope string `json:"scope"`
+        Count int    `json:"count"`
     }
     if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
         t.Fatal(err)
     }
+    if body.Scope != catalog.SearchScopeAll {
+        t.Fatalf("expected default scope all, got %q", body.Scope)
+    }
     if body.Count != 3 {
         t.Fatalf("expected 3 MVP demo products, got %d", body.Count)
+    }
+}
+
+func TestSearchNonFoodScopeIncludesNonFoodAndHouseholdOnly(t *testing.T) {
+    store := catalog.NewMemoryStore([]catalog.Product{
+        {
+            ID: "shampoo", Name: "Champu familiar", ItemType: "non_food",
+            NormalizedCategory: "non_food", PostalCode: "28001",
+        },
+        {
+            ID: "detergent", Name: "Detergente hogar", ItemType: "household",
+            NormalizedCategory: "household", PostalCode: "28001",
+        },
+        {
+            ID: "food", Name: "Gelatina de limon", ItemType: "prepared_food",
+            NormalizedCategory: "food.prepared", PostalCode: "28001",
+        },
+    })
+    h := NewHandler(store)
+    req := httptest.NewRequest(http.MethodGet, "/api/v1/products/search?q=&scope=non_food", nil)
+    rec := httptest.NewRecorder()
+    h.Routes().ServeHTTP(rec, req)
+    if rec.Code != http.StatusBadRequest {
+        t.Fatalf("empty q must remain invalid, got %d", rec.Code)
+    }
+
+    req = httptest.NewRequest(http.MethodGet, "/api/v1/products/search?q=a&scope=non_food&postalCode=28001", nil)
+    rec = httptest.NewRecorder()
+    h.Routes().ServeHTTP(rec, req)
+
+    if rec.Code != http.StatusOK {
+        t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+    }
+    var body struct {
+        Scope string            `json:"scope"`
+        Items []catalog.Product `json:"items"`
+    }
+    if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+        t.Fatal(err)
+    }
+    if body.Scope != catalog.SearchScopeNonFood {
+        t.Fatalf("expected scope non_food, got %q", body.Scope)
+    }
+    if len(body.Items) != 2 {
+        t.Fatalf("expected 2 non-food products, got %d: %#v", len(body.Items), body.Items)
+    }
+    for _, item := range body.Items {
+        if item.ID == "food" {
+            t.Fatalf("food product leaked into non_food scope: %#v", item)
+        }
+    }
+}
+
+func TestSearchFoodScopeExcludesDirectPurchaseNonFood(t *testing.T) {
+    store := catalog.NewMemoryStore([]catalog.Product{
+        {ID: "food", Name: "Arroz", ItemType: "food_ingredient", NormalizedCategory: "food.pantry.cereal.rice"},
+        {ID: "pending-food", Name: "Aceite", ItemType: "other"},
+        {ID: "household", Name: "Abrillantador", ItemType: "household", NormalizedCategory: "household"},
+        {ID: "non-food", Name: "Afeitadora", ItemType: "non_food", NormalizedCategory: "non_food"},
+    })
+    h := NewHandler(store)
+    req := httptest.NewRequest(http.MethodGet, "/api/v1/products/search?q=a&scope=food", nil)
+    rec := httptest.NewRecorder()
+    h.Routes().ServeHTTP(rec, req)
+
+    if rec.Code != http.StatusOK {
+        t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+    }
+    var body struct {
+        Items []catalog.Product `json:"items"`
+    }
+    if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+        t.Fatal(err)
+    }
+    if len(body.Items) != 2 {
+        t.Fatalf("expected 2 food-side products, got %d: %#v", len(body.Items), body.Items)
+    }
+    for _, item := range body.Items {
+        if item.ID == "household" || item.ID == "non-food" {
+            t.Fatalf("direct-purchase non-food leaked into food scope: %#v", item)
+        }
     }
 }
 

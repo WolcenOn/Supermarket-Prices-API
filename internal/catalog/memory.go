@@ -25,6 +25,10 @@ func (m *MemoryStore) Supermarkets(_ context.Context) ([]Supermarket, error) {
 func (m *MemoryStore) Search(_ context.Context, params SearchParams) ([]Product, error) {
     query := strings.ToLower(strings.TrimSpace(params.Query))
     postalCode := strings.TrimSpace(params.PostalCode)
+    scope, ok := NormalizeSearchScope(params.Scope)
+    if !ok {
+        return []Product{}, nil
+    }
 
     out := make([]Product, 0)
     for _, product := range m.products {
@@ -32,6 +36,9 @@ func (m *MemoryStore) Search(_ context.Context, params SearchParams) ([]Product,
             continue
         }
         if postalCode != "" && product.PostalCode != "" && product.PostalCode != postalCode {
+            continue
+        }
+        if !ProductMatchesSearchScope(product, scope) {
             continue
         }
         out = append(out, product)

@@ -2,7 +2,14 @@ package catalog
 
 import (
     "context"
+    "strings"
     "time"
+)
+
+const (
+    SearchScopeAll     = "all"
+    SearchScopeFood    = "food"
+    SearchScopeNonFood = "non_food"
 )
 
 type Supermarket struct {
@@ -49,6 +56,37 @@ type Product struct {
 type SearchParams struct {
     Query      string
     PostalCode string
+    Scope      string
+}
+
+func NormalizeSearchScope(value string) (string, bool) {
+    switch strings.ToLower(strings.TrimSpace(value)) {
+    case "", SearchScopeAll:
+        return SearchScopeAll, true
+    case SearchScopeFood:
+        return SearchScopeFood, true
+    case SearchScopeNonFood:
+        return SearchScopeNonFood, true
+    default:
+        return "", false
+    }
+}
+
+func ProductMatchesSearchScope(product Product, scope string) bool {
+    normalizedScope, ok := NormalizeSearchScope(scope)
+    if !ok || normalizedScope == SearchScopeAll {
+        return ok
+    }
+
+    itemType := strings.ToLower(strings.TrimSpace(product.ItemType))
+    normalizedCategory := strings.ToLower(strings.TrimSpace(product.NormalizedCategory))
+    nonFood := itemType == "non_food" || itemType == "household" ||
+        normalizedCategory == "non_food" || normalizedCategory == "household"
+
+    if normalizedScope == SearchScopeNonFood {
+        return nonFood
+    }
+    return !nonFood
 }
 
 type Store interface {
