@@ -4,6 +4,7 @@ import (
     "context"
     "strings"
     "time"
+    "unicode"
 )
 
 type MemoryStore struct {
@@ -22,8 +23,59 @@ func (m *MemoryStore) Supermarkets(_ context.Context) ([]Supermarket, error) {
     }, nil
 }
 
+// NormalizeSearchText turns user/product text into accent-insensitive lowercase
+// tokens. Product search uses whole tokens so a query such as "pollo" does not
+// accidentally match "repollo".
+func NormalizeSearchText(value string) string {
+    var builder strings.Builder
+    lastSpace := true
+    for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+        switch r {
+        case 'á', 'à', 'ä', 'â':
+            r = 'a'
+        case 'é', 'è', 'ë', 'ê':
+            r = 'e'
+        case 'í', 'ì', 'ï', 'î':
+            r = 'i'
+        case 'ó', 'ò', 'ö', 'ô':
+            r = 'o'
+        case 'ú', 'ù', 'ü', 'û':
+            r = 'u'
+        case 'ñ':
+            r = 'n'
+        }
+        if unicode.IsLetter(r) || unicode.IsDigit(r) {
+            builder.WriteRune(r)
+            lastSpace = false
+            continue
+        }
+        if !lastSpace {
+            builder.WriteByte(' ')
+            lastSpace = true
+        }
+    }
+    return strings.TrimSpace(builder.String())
+}
+
+func SearchTextMatches(value, query string) bool {
+    normalizedQuery := NormalizeSearchText(query)
+    if normalizedQuery == "" {
+        return true
+    }
+    tokens := make(map[string]struct{})
+    for _, token := range strings.Fields(NormalizeSearchText(value)) {
+        tokens[token] = struct{}{}
+    }
+    for _, term := range strings.Fields(normalizedQuery) {
+        if _, ok := tokens[term]; !ok {
+            return false
+        }
+    }
+    return true
+}
+
 func (m *MemoryStore) Search(_ context.Context, params SearchParams) ([]Product, error) {
-    query := strings.ToLower(strings.TrimSpace(params.Query))
+    query := NormalizeSearchText(params.Query)
     postalCode := strings.TrimSpace(params.PostalCode)
     scope, ok := NormalizeSearchScope(params.Scope)
     if !ok {
@@ -32,7 +84,7 @@ func (m *MemoryStore) Search(_ context.Context, params SearchParams) ([]Product,
 
     out := make([]Product, 0)
     for _, product := range m.products {
-        if query != "" && !strings.Contains(strings.ToLower(product.Name+" "+product.Brand), query) {
+        if query != "" && !SearchTextMatches(product.Name+" "+product.Brand, query) {
             continue
         }
         if postalCode != "" && product.PostalCode != "" && product.PostalCode != postalCode {
