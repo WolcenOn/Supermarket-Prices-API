@@ -84,8 +84,21 @@ func (h *Handler) searchProducts(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    scope, ok := catalog.NormalizeSearchScope(r.URL.Query().Get("scope"))
+    if !ok {
+        writeJSON(w, http.StatusBadRequest, map[string]any{
+            "error": "invalid_scope",
+            "message": "query parameter scope must be one of all, food, non_food",
+        })
+        return
+    }
+
     postalCode := strings.TrimSpace(r.URL.Query().Get("postalCode"))
-    products, err := h.store.Search(r.Context(), catalog.SearchParams{Query: query, PostalCode: postalCode})
+    products, err := h.store.Search(r.Context(), catalog.SearchParams{
+        Query:      query,
+        PostalCode: postalCode,
+        Scope:      scope,
+    })
     if err != nil {
         writeStoreError(w)
         return
@@ -94,6 +107,7 @@ func (h *Handler) searchProducts(w http.ResponseWriter, r *http.Request) {
     writeJSON(w, http.StatusOK, map[string]any{
         "query": query,
         "postalCode": postalCode,
+        "scope": scope,
         "count": len(products),
         "items": products,
     })
