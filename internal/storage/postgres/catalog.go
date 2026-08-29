@@ -62,7 +62,8 @@ func (s *CatalogStore) Search(ctx context.Context, params catalog.SearchParams) 
 
     query := strings.TrimSpace(params.Query)
     postalCode := strings.TrimSpace(params.PostalCode)
-    if query == "" {
+    scope, ok := catalog.NormalizeSearchScope(params.Scope)
+    if query == "" || !ok {
         return []catalog.Product{}, nil
     }
 
@@ -107,9 +108,26 @@ func (s *CatalogStore) Search(ctx context.Context, params catalog.SearchParams) 
         ) po ON TRUE
         WHERE sp.supermarket_id IN ('dia', 'mercadona', 'lidl')
           AND LOWER(sp.name || ' ' || COALESCE(sp.brand, '')) LIKE '%' || LOWER($1) || '%'
+          AND (
+              $3 = 'all'
+              OR (
+                  $3 = 'non_food'
+                  AND (
+                      COALESCE(sp.item_type, '') IN ('non_food', 'household')
+                      OR COALESCE(sp.normalized_category, '') IN ('non_food', 'household')
+                  )
+              )
+              OR (
+                  $3 = 'food'
+                  AND NOT (
+                      COALESCE(sp.item_type, '') IN ('non_food', 'household')
+                      OR COALESCE(sp.normalized_category, '') IN ('non_food', 'household')
+                  )
+              )
+          )
         ORDER BY sp.supermarket_id, sp.name
         LIMIT 100
-    `, query, postalCode)
+    `, query, postalCode, scope)
     if err != nil {
         return nil, fmt.Errorf("postgres catalog: search products: %w", err)
     }
