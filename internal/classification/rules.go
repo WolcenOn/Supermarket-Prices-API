@@ -91,6 +91,23 @@ var nonFoodSourceRoots = []string{
     "salud-y-parafarmacia",
 }
 
+var freshChickenBreastExclusionTerms = []string{
+    "empanad",
+    "rellen",
+    "marinad",
+    "adobad",
+    "asado",
+    "brasead",
+    "cocid",
+    "burger",
+    "hamburgues",
+    "longaniza",
+    "salchicha",
+    "nugget",
+    "brocheta",
+    "pincho",
+}
+
 // Classify assigns a conservative product type before canonical matching.
 // Source taxonomy is preferred when available, while product-name rules are
 // used as a fallback. Unknown products stay pending instead of being forced
@@ -122,6 +139,10 @@ func Classify(product catalog.Product) Result {
 
     if isMilkSourceCategory(product) && strings.Contains(name, "leche") {
         return classified("food_ingredient", "food.dairy.milk", true, 0.99)
+    }
+
+    if isFreshChickenBreast(product, name) {
+        return classified("food_ingredient", "food.meat.chicken_breast", true, 0.99)
     }
 
     if category, ok := freshProduceCategory(product); ok {
@@ -189,6 +210,16 @@ func isMilkSourceCategory(product catalog.Product) bool {
     return categoryID == "l2051" ||
         categoryName == "leche" ||
         strings.Contains(categoryPath, "leche c l2051")
+}
+
+func isFreshChickenBreast(product catalog.Product, name string) bool {
+    if normalize(product.SourceCategoryID) != "l2202" {
+        return false
+    }
+    if !strings.Contains(name, "pechuga") {
+        return false
+    }
+    return !containsAny(name, freshChickenBreastExclusionTerms)
 }
 
 func freshProduceCategory(product catalog.Product) (string, bool) {
