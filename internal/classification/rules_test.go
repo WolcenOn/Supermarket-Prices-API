@@ -219,6 +219,67 @@ func TestClassifyUsesSourceTaxonomyBeforeCanonicalMatching(t *testing.T) {
             wantStatus:   "classified",
         },
         {
+            name: "personal care source taxonomy is non food",
+            product: catalog.Product{
+                Name:               "Gel de afeitar Dia Imaqe 200 ml",
+                SourceCategoryID:   "L2150",
+                SourceCategoryName: "Afeitado",
+                SourceCategoryPath: "higiene-y-cuidado-del-cuerpo/afeitado/c/L2150",
+            },
+            wantType:     "non_food",
+            wantCategory: "non_food",
+            wantRecipe:   false,
+            wantStatus:   "classified",
+        },
+        {
+            name: "hair and perfume source taxonomy is non food",
+            product: catalog.Product{
+                Name:               "Champú 400 ml",
+                SourceCategoryName: "Champu",
+                SourceCategoryPath: "cabello-y-perfumeria/champu/c/L9999",
+            },
+            wantType:     "non_food",
+            wantCategory: "non_food",
+            wantRecipe:   false,
+            wantStatus:   "classified",
+        },
+        {
+            name: "pet source taxonomy is non food",
+            product: catalog.Product{
+                Name:               "Alimento para gatos 400 g",
+                SourceCategoryName: "Gatos",
+                SourceCategoryPath: "mascotas/gatos/c/L9998",
+            },
+            wantType:     "non_food",
+            wantCategory: "non_food",
+            wantRecipe:   false,
+            wantStatus:   "classified",
+        },
+        {
+            name: "parapharmacy source taxonomy is non food",
+            product: catalog.Product{
+                Name:               "Tapones para oídos 4 unidades",
+                SourceCategoryName: "Parafarmacia",
+                SourceCategoryPath: "salud-y-parafarmacia/parafarmacia/c/L2184",
+            },
+            wantType:     "non_food",
+            wantCategory: "non_food",
+            wantRecipe:   false,
+            wantStatus:   "classified",
+        },
+        {
+            name: "food-like word outside non-food roots is not excluded",
+            product: catalog.Product{
+                Name:               "Aguacate bandeja 450 g",
+                SourceCategoryName: "Aguacates",
+                SourceCategoryPath: "frutas/aguacates/c/L9997",
+            },
+            wantType:     "other",
+            wantCategory: "",
+            wantRecipe:   false,
+            wantStatus:   "pending",
+        },
+        {
             name:         "unknown stays pending",
             product:      catalog.Product{Name: "Artículo desconocido"},
             wantType:     "other",
@@ -243,8 +304,8 @@ func TestClassifyUsesSourceTaxonomyBeforeCanonicalMatching(t *testing.T) {
             if got.Status != tt.wantStatus {
                 t.Fatalf("Status = %q, want %q", got.Status, tt.wantStatus)
             }
-            if got.Source != SourceRulesV2 {
-                t.Fatalf("Source = %q, want %q", got.Source, SourceRulesV2)
+            if got.Source != SourceRulesV3 {
+                t.Fatalf("Source = %q, want %q", got.Source, SourceRulesV3)
             }
         })
     }
@@ -264,7 +325,7 @@ func TestApplyWritesClassificationToProduct(t *testing.T) {
     if product.ClassificationStatus != "classified" || product.ClassificationScore <= 0 {
         t.Fatalf("classification metadata not written: %#v", product)
     }
-    if product.ClassificationSource != SourceRulesV2 {
-        t.Fatalf("ClassificationSource = %q, want %q", product.ClassificationSource, SourceRulesV2)
+    if product.ClassificationSource != SourceRulesV3 {
+        t.Fatalf("ClassificationSource = %q, want %q", product.ClassificationSource, SourceRulesV3)
     }
 }
