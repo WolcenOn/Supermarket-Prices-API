@@ -60,7 +60,7 @@ func (s *CatalogStore) Search(ctx context.Context, params catalog.SearchParams) 
         return nil, fmt.Errorf("postgres catalog: database is required")
     }
 
-    query := strings.TrimSpace(params.Query)
+    query := catalog.NormalizeSearchText(params.Query)
     postalCode := strings.TrimSpace(params.PostalCode)
     scope, ok := catalog.NormalizeSearchScope(params.Scope)
     if query == "" || !ok {
@@ -107,7 +107,24 @@ func (s *CatalogStore) Search(ctx context.Context, params catalog.SearchParams) 
             LIMIT 1
         ) po ON TRUE
         WHERE sp.supermarket_id IN ('dia', 'mercadona', 'lidl')
-          AND LOWER(sp.name || ' ' || COALESCE(sp.brand, '')) LIKE '%' || LOWER($1) || '%'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM regexp_split_to_table($1, ' +') AS search_term(term)
+              WHERE search_term.term <> ''
+                AND POSITION(
+                    ' ' || search_term.term || ' '
+                    IN ' ' || regexp_replace(
+                        translate(
+                            lower(sp.name || ' ' || COALESCE(sp.brand, '')),
+                            'áàäâéèëêíìïîóòöôúùüûñ',
+                            'aaaaeeeeiiiioooouuuun'
+                        ),
+                        '[^a-z0-9]+',
+                        ' ',
+                        'g'
+                    ) || ' '
+                ) = 0
+          )
           AND (
               $3 = 'all'
               OR (
