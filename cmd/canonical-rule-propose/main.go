@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 
@@ -80,5 +79,3 @@ func openOutput(path string) (*os.File, error) {
 	}
 	return file, nil
 }
-
-var _ io.Reader = os.Stdin
