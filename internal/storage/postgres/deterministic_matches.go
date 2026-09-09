@@ -26,15 +26,21 @@ func LoadDeterministicMatchProducts(ctx context.Context, db *sql.DB, supermarket
         return []catalog.Product{}, nil
     }
 
-    category := ""
+    normalizedCategory := ""
+    sourceCategoryID := ""
     switch family {
     case "all", "":
     case "rice":
-        category = "food.pantry.cereal.rice"
+        normalizedCategory = "food.pantry.cereal.rice"
     case "milk":
-        category = "food.dairy.milk"
+        normalizedCategory = "food.dairy.milk"
     case "vegetables":
-        category = "food.produce.vegetable"
+        normalizedCategory = "food.produce.vegetable"
+    case "ham":
+        // DIA category L2001 is the dedicated cooked-ham category observed by
+        // the offline semantic analysis. Matching still requires name-level
+        // evidence; the category filter only narrows the preview population.
+        sourceCategoryID = "l2001"
     default:
         return nil, fmt.Errorf("postgres deterministic matches: unsupported family %q", family)
     }
@@ -61,9 +67,10 @@ func LoadDeterministicMatchProducts(ctx context.Context, db *sql.DB, supermarket
           AND recipe_compatible = TRUE
           AND item_type = 'food_ingredient'
           AND ($2 = '' OR normalized_category = $2)
+          AND ($3 = '' OR LOWER(COALESCE(source_category_id, '')) = $3)
         ORDER BY normalized_category, name, external_id
-        LIMIT $3
-    `, supermarketID, category, limit)
+        LIMIT $4
+    `, supermarketID, normalizedCategory, sourceCategoryID, limit)
     if err != nil {
         return nil, fmt.Errorf("postgres deterministic matches: list products: %w", err)
     }
