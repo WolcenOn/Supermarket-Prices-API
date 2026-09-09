@@ -8,6 +8,7 @@ import (
 )
 
 const SourceRulesV3 = "rules:v3"
+const SourceRulesV4 = "rules:v4"
 
 type Match struct {
     CanonicalIngredientID string
@@ -98,6 +99,26 @@ var chickenBreastMatchExclusionTerms = []string{
     "pincho",
 }
 
+// Cooked ham uses DIA's dedicated L2001 source category as the strongest
+// contextual signal. Name evidence is still mandatory so a category anomaly
+// cannot create an automatic match by itself.
+var cookedHamIdentityTerms = []string{
+    "jamon cocido",
+    "jamon york",
+}
+
+var cookedHamExclusionTerms = []string{
+    "serrano",
+    "iberico",
+    "pavo",
+    "croqueta",
+    "pizza",
+    "rellen",
+    "sabor",
+    "snack",
+    "pasta",
+}
+
 var preparedRiceTerms = []string{
     "tres delicias",
     "al punto",
@@ -150,6 +171,9 @@ func Suggest(product catalog.Product) []Match {
     }
 
     if match, ok := suggestVegetable(product, name); ok {
+        return []Match{match}
+    }
+    if match, ok := suggestCookedHam(product, name); ok {
         return []Match{match}
     }
     if match, ok := suggestChickenBreast(product, name); ok {
@@ -205,6 +229,19 @@ func suggestVegetable(product catalog.Product, name string) (Match, bool) {
         }
     }
     return Match{}, false
+}
+
+func suggestCookedHam(product catalog.Product, name string) (Match, bool) {
+    if product.ClassificationStatus != "classified" ||
+        !product.RecipeCompatible ||
+        product.ItemType != "food_ingredient" ||
+        strings.ToLower(strings.TrimSpace(product.SourceCategoryID)) != "l2001" ||
+        containsAny(name, cookedHamExclusionTerms) ||
+        !containsAny(name, cookedHamIdentityTerms) {
+        return Match{}, false
+    }
+
+    return newMatchWithSource(product, "jamon_cocido", 0.99, SourceRulesV4), true
 }
 
 func suggestChickenBreast(product catalog.Product, name string) (Match, bool) {
@@ -269,13 +306,17 @@ func suggestMilk(product catalog.Product, name string) (Match, bool) {
 }
 
 func newMatch(product catalog.Product, canonicalID string, score float64) Match {
+    return newMatchWithSource(product, canonicalID, score, SourceRulesV3)
+}
+
+func newMatchWithSource(product catalog.Product, canonicalID string, score float64, source string) Match {
     return Match{
         CanonicalIngredientID: canonicalID,
         SupermarketID:         product.SupermarketID,
         ExternalID:            product.ExternalID,
         Score:                 score,
         Status:                "automatic",
-        Source:                SourceRulesV3,
+        Source:                source,
     }
 }
 
