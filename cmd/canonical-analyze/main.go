@@ -17,7 +17,7 @@ func main() {
 	output := flag.String("output", "", "path for JSON report; defaults to stdout")
 	foodOnly := flag.Bool("food-only", true, "restrict analysis to known food taxonomy roots")
 	minSupport := flag.Int("min-support", 2, "minimum number of products for a pattern")
-	topGlobal := flag.Int("top-global", 300, "maximum global patterns")
+	topGlobal := flag.Int("top-global", 0, "maximum global patterns; 0 keeps all patterns meeting min-support")
 	topPerCategory := flag.Int("top-per-category", 15, "maximum patterns per category and anchor")
 	maxExamples := flag.Int("max-examples", 5, "maximum example names per pattern")
 	anchors := flag.String("anchors", "jamon,pollo,tomate,leche,arroz,queso", "comma-separated terms whose local contexts should be reported")

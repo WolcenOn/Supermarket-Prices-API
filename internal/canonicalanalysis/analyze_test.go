@@ -53,6 +53,25 @@ func TestAnalyzeCountsPatternOncePerProduct(t *testing.T) {
 	t.Fatal("arroz pattern not found")
 }
 
+func TestAnalyzeTopGlobalZeroKeepsAllSupportedPatterns(t *testing.T) {
+	products := []Product{
+		product("1", "Jamón cocido extra", "L2001", "Jamón cocido", "charcuteria/jamon-cocido/c/L2001"),
+		product("2", "Jamón cocido reducido sal", "L2001", "Jamón cocido", "charcuteria/jamon-cocido/c/L2001"),
+	}
+
+	complete := Analyze(products, Options{FoodOnly: true, MinSupport: 1, TopGlobal: 0})
+	limited := Analyze(products, Options{FoodOnly: true, MinSupport: 1, TopGlobal: 1})
+	if len(complete.GlobalPatterns) <= 1 {
+		t.Fatalf("unbounded global patterns = %d, want more than 1", len(complete.GlobalPatterns))
+	}
+	if len(limited.GlobalPatterns) != 1 {
+		t.Fatalf("limited global patterns = %d, want 1", len(limited.GlobalPatterns))
+	}
+	if !hasPattern(complete.GlobalPatterns, "jamon cocido") {
+		t.Fatal("unbounded global patterns should retain specific jamon cocido pattern")
+	}
+}
+
 func TestAnalyzeFoodOnlyExcludesNonFoodRoots(t *testing.T) {
 	products := []Product{
 		product("1", "Champú hidratante 750 ml", "L2144", "Champu", "cabello-y-perfumeria/champu/c/L2144"),
@@ -83,4 +102,13 @@ func findAnchor(t *testing.T, report Report, anchor string) AnchorContext {
 	}
 	t.Fatalf("anchor %q not found", anchor)
 	return AnchorContext{}
+}
+
+func hasPattern(patterns []Pattern, text string) bool {
+	for _, pattern := range patterns {
+		if pattern.Text == text {
+			return true
+		}
+	}
+	return false
 }

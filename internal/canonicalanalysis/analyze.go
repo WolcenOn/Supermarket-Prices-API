@@ -47,10 +47,10 @@ type CategoryReport struct {
 }
 
 type AnchorContext struct {
-	Anchor     string            `json:"anchor"`
-	Products   int               `json:"products"`
-	Categories map[string]int    `json:"categories"`
-	Contexts   []ContextPattern  `json:"contexts"`
+	Anchor     string           `json:"anchor"`
+	Products   int              `json:"products"`
+	Categories map[string]int   `json:"categories"`
+	Contexts   []ContextPattern `json:"contexts"`
 }
 
 type ContextPattern struct {
@@ -60,11 +60,11 @@ type ContextPattern struct {
 }
 
 type Report struct {
-	ProductsTotal int             `json:"productsTotal"`
-	ProductsUsed  int             `json:"productsUsed"`
-	Categories    []CategoryReport `json:"categories"`
-	GlobalPatterns []Pattern       `json:"globalPatterns"`
-	AnchorContexts []AnchorContext `json:"anchorContexts,omitempty"`
+	ProductsTotal  int              `json:"productsTotal"`
+	ProductsUsed   int              `json:"productsUsed"`
+	Categories     []CategoryReport `json:"categories"`
+	GlobalPatterns []Pattern        `json:"globalPatterns"`
+	AnchorContexts []AnchorContext  `json:"anchorContexts,omitempty"`
 }
 
 type categoryMeta struct {
@@ -263,8 +263,8 @@ func normalizeOptions(options Options) Options {
 	if options.MinSupport <= 0 {
 		options.MinSupport = 2
 	}
-	if options.TopGlobal <= 0 {
-		options.TopGlobal = 300
+	if options.TopGlobal < 0 {
+		options.TopGlobal = 0
 	}
 	if options.TopPerCategory <= 0 {
 		options.TopPerCategory = 15
